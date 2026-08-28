@@ -33,6 +33,7 @@ class Settings(BaseSettings):
 
     # ── Google Gemini ─────────────────────────────────────────────────────────
     GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-1.5-flash-latest"
 
     # ── MinIO / S3 ────────────────────────────────────────────────────────────
     MINIO_ENDPOINT: str = "http://localhost:9000"

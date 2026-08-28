@@ -99,6 +99,7 @@ services:
       # Comunicación interna Docker: siempre usa el nombre del servicio, no localhost
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-biblioteca}:${POSTGRES_PASSWORD:-biblioteca_secret}@postgres:5432/${POSTGRES_DB:-biblioteca_db}
       MINIO_ENDPOINT: http://minio:9000
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash-latest}
     volumes:
       - ./backend:/app
     ports:
