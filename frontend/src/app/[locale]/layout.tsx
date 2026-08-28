@@ -55,13 +55,6 @@ export default async function RootLayout({
 
   return (
     <html lang={locale} className="h-full">
-      <head>
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
-          crossOrigin="anonymous"
-        />
-      </head>
       <body className={`${inter.className} h-full bg-gray-50 text-gray-900`}>
         <NextIntlClientProvider messages={messages}>
           <div className="min-h-full">
