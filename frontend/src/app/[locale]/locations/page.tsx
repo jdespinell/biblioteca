@@ -203,16 +203,24 @@ export default function LocationsPage() {
                 <MapPin className="h-5 w-5 text-primary-600" />
               </div>
 
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-gray-900">{location.name}</h3>
+              <Link
+                href={`/${locale}/library?location_id=${location.id}`}
+                className="flex-1 min-w-0 group hover:opacity-80 transition"
+              >
+                <h3 className="font-semibold text-gray-900 group-hover:text-primary-600 transition-colors">
+                  {location.name}
+                </h3>
                 {location.description && (
                   <p className="text-sm text-gray-500 truncate">{location.description}</p>
                 )}
                 <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
                   <BookOpen className="h-3 w-3" />
                   {t("books", { count: location.book_count })}
+                  <span className="text-primary-600 ml-1 font-medium group-hover:underline">
+                    · Ver libros →
+                  </span>
                 </p>
-              </div>
+              </Link>
 
               <div className="flex items-center gap-1 flex-shrink-0">
                 <button

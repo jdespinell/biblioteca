@@ -149,3 +149,83 @@ async def _lookup_google_books(isbn: str) -> ISBNLookupResponse:
         source="googlebooks",
         found=True,
     )
+
+
+async def search_external_books(query: str, limit: int = 10) -> list[dict]:
+    """
+    Search Google Books API by title, author, or keyword.
+    Returns a normalized list of book dictionaries.
+    """
+    results: list[dict] = []
+    seen_titles: set[str] = set()
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                GOOGLE_BOOKS_URL,
+                params={
+                    "q": query,
+                    "maxResults": min(max(limit, 5), 20),
+                    "printType": "books",
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                for item in data.get("items", []):
+                    vol = item.get("volumeInfo", {})
+                    title = vol.get("title")
+                    if not title:
+                        continue
+
+                    # Authors
+                    authors = vol.get("authors", [])
+                    author_str = ", ".join(authors) if authors else "Autor desconocido"
+
+                    # Deduplicate by title + author
+                    dedup_key = f"{title.lower().strip()}|{author_str.lower().strip()}"
+                    if dedup_key in seen_titles:
+                        continue
+                    seen_titles.add(dedup_key)
+
+                    # ISBNs
+                    isbn10 = None
+                    isbn13 = None
+                    for ident in vol.get("industryIdentifiers", []):
+                        if ident.get("type") == "ISBN_10":
+                            isbn10 = ident.get("identifier")
+                        elif ident.get("type") == "ISBN_13":
+                            isbn13 = ident.get("identifier")
+
+                    # Cover
+                    img = vol.get("imageLinks", {})
+                    cover = (
+                        img.get("thumbnail")
+                        or img.get("smallThumbnail")
+                        or img.get("medium")
+                    )
+                    if cover:
+                        cover = cover.replace("http://", "https://")
+
+                    # Year
+                    pub_date = vol.get("publishedDate", "")
+                    year: int | None = None
+                    if pub_date and len(pub_date) >= 4 and pub_date[:4].isdigit():
+                        year = int(pub_date[:4])
+
+                    results.append({
+                        "title": title,
+                        "author": author_str,
+                        "publisher": vol.get("publisher"),
+                        "isbn": isbn10,
+                        "isbn13": isbn13,
+                        "published_year": year,
+                        "page_count": vol.get("pageCount"),
+                        "language": vol.get("language", "es"),
+                        "description": vol.get("description"),
+                        "cover_url": cover,
+                        "source": "googlebooks",
+                    })
+    except Exception as e:
+        logger.warning("External books search failed for %s: %s", query, e)
+
+    return results[:limit]

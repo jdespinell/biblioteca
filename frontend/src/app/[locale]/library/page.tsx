@@ -1,19 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useSWR, { mutate } from "swr";
 import { useLocale, useTranslations } from "next-intl";
-import { BookOpen, Filter, Search, Plus } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { BookOpen, Filter, Search, Plus, MapPin, X } from "lucide-react";
 import Link from "next/link";
 import { userBooksApi, type UserBook, type BookStatus } from "@/lib/api/user-books";
+import { locationsApi, type Location } from "@/lib/api/locations";
 import BookCard from "@/components/book/BookCard";
-
 import { useAuth } from "@/hooks/useAuth";
 
 const STATUS_FILTERS: { value: BookStatus | "all"; label: string }[] = [
-  { value: "all", label: "Todos" },
-  { value: "unread", label: "Por Leer" },
+  { value: "all", label: "Todos los estados" },
   { value: "reading", label: "Leyendo" },
+  { value: "unread", label: "Por Leer" },
   { value: "read", label: "Leídos" },
   { value: "wishlist", label: "Wishlist" },
 ];
@@ -21,17 +22,37 @@ const STATUS_FILTERS: { value: BookStatus | "all"; label: string }[] = [
 export default function LibraryPage() {
   const t = useTranslations("books");
   const locale = useLocale();
+  const searchParams = useSearchParams();
+  const initialLocation = searchParams?.get("location_id") || "all";
+
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [statusFilter, setStatusFilter] = useState<BookStatus | "all">("all");
+  const [locationFilter, setLocationFilter] = useState<string>(initialLocation);
   const [search, setSearch] = useState("");
 
-  const swrKey = isAuthenticated ? ["user-books-library", statusFilter, search] : null;
+  useEffect(() => {
+    const locId = searchParams?.get("location_id");
+    if (locId) {
+      setLocationFilter(locId);
+    }
+  }, [searchParams]);
+
+  // Load locations for filtering
+  const { data: locations } = useSWR<Location[]>(
+    isAuthenticated ? "locations" : null,
+    locationsApi.list
+  );
+
+  const swrKey = isAuthenticated
+    ? ["user-books-library", statusFilter, search, locationFilter]
+    : null;
 
   const { data: books, isLoading } = useSWR<UserBook[]>(swrKey, () =>
     userBooksApi.list({
       status: statusFilter === "all" ? undefined : statusFilter,
+      location_id: locationFilter === "all" ? undefined : locationFilter,
       search: search || undefined,
-      limit: 50,
+      limit: 100,
     })
   );
 
@@ -46,6 +67,8 @@ export default function LibraryPage() {
       false
     );
   };
+
+  const selectedLocation = locations?.find((l) => l.id === locationFilter);
 
   if (!authLoading && !isAuthenticated) {
     return (
@@ -77,50 +100,116 @@ export default function LibraryPage() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-gray-900">{t("addBook") === "Agregar Libro" ? "Mi Biblioteca" : "My Library"}</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Mi Biblioteca</h1>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {books ? `${books.length} libros en total` : "Cargando..."}
+          </p>
+        </div>
         <Link
           href={`/${locale}/library/add`}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 transition-colors shadow-sm text-sm"
         >
           <Plus className="h-4 w-4" />
           {t("addBook")}
         </Link>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      {/* Filters Bar */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-3">
         {/* Search */}
-        <div className="relative flex-1">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
-            placeholder={t("searchPlaceholder")}
+            placeholder="Buscar por título o autor en tu colección..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition"
+            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50/50 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:bg-white transition"
           />
         </div>
 
-        {/* Status filter pills */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          <Filter className="h-4 w-4 text-gray-400 flex-shrink-0" />
-          {STATUS_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setStatusFilter(f.value)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                statusFilter === f.value
-                  ? "bg-primary-600 text-white"
-                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-              }`}
+        {/* Filter Controls: Status Pills & Location Selector */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
+          {/* Status filter pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 scrollbar-hide">
+            <Filter className="h-4 w-4 text-gray-400 flex-shrink-0 mr-1" />
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                onClick={() => setStatusFilter(f.value)}
+                className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all ${
+                  statusFilter === f.value
+                    ? "bg-primary-600 text-white shadow-sm"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Location Filter Dropdown */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <MapPin className="h-4 w-4 text-gray-400 flex-shrink-0" />
+            <select
+              value={locationFilter}
+              onChange={(e) => setLocationFilter(e.target.value)}
+              className="px-3 py-1.5 border border-gray-200 rounded-xl text-xs bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary-500 w-full sm:w-auto font-medium"
             >
-              {f.label}
-            </button>
-          ))}
+              <option value="all">Todas las ubicaciones</option>
+              {locations?.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  📍 {loc.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        {/* Active Filter Badges */}
+        {(statusFilter !== "all" || locationFilter !== "all" || search) && (
+          <div className="flex items-center gap-2 pt-2 border-t border-gray-100 flex-wrap">
+            <span className="text-xs text-gray-400">Filtros activos:</span>
+            {statusFilter !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs bg-primary-50 text-primary-700 font-medium">
+                Estado: {STATUS_FILTERS.find((f) => f.value === statusFilter)?.label}
+                <button onClick={() => setStatusFilter("all")} className="hover:text-primary-900">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {selectedLocation && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs bg-green-50 text-green-700 font-medium">
+                Ubicación: {selectedLocation.name}
+                <button onClick={() => setLocationFilter("all")} className="hover:text-green-900">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {search && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700 font-medium">
+                Texto: &quot;{search}&quot;
+                <button onClick={() => setSearch("")} className="hover:text-gray-900">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            <button
+              onClick={() => {
+                setStatusFilter("all");
+                setLocationFilter("all");
+                setSearch("");
+              }}
+              className="text-xs text-primary-600 hover:underline ml-auto"
+            >
+              Limpiar todos
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Books grid */}
+      {/* Books Grid */}
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
           {Array.from({ length: 12 }).map((_, i) => (
@@ -128,16 +217,35 @@ export default function LibraryPage() {
           ))}
         </div>
       ) : books?.length === 0 ? (
-        <div className="text-center py-16 bg-white rounded-xl border border-gray-100">
-          <BookOpen className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-500 mb-4">{t("noBooks")}</p>
-          <Link
-            href={`/${locale}/library/add`}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            {t("addBook")}
-          </Link>
+        <div className="text-center py-16 bg-white rounded-2xl border border-gray-100 space-y-3">
+          <BookOpen className="h-12 w-12 text-gray-300 mx-auto" />
+          <p className="text-gray-600 font-medium">No se encontraron libros con los filtros seleccionados</p>
+          <p className="text-xs text-gray-400">
+            {locationFilter !== "all"
+              ? "No tienes libros asignados a esta estantería todavía."
+              : "Prueba cambiando el estado o agregando un nuevo libro."}
+          </p>
+          <div className="flex gap-2 justify-center pt-2">
+            {(statusFilter !== "all" || locationFilter !== "all" || search) && (
+              <button
+                onClick={() => {
+                  setStatusFilter("all");
+                  setLocationFilter("all");
+                  setSearch("");
+                }}
+                className="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-xl text-xs hover:bg-gray-200 transition"
+              >
+                Limpiar filtros
+              </button>
+            )}
+            <Link
+              href={`/${locale}/library/add`}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white font-medium rounded-xl text-xs hover:bg-primary-700 transition shadow-sm"
+            >
+              <Plus className="h-4 w-4" />
+              {t("addBook")}
+            </Link>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">

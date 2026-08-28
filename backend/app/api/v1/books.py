@@ -47,7 +47,61 @@ async def search_books(
 
     query = query.limit(limit).offset(offset)
     result = await db.execute(query)
-    books = result.scalars().all()
+    books = list(result.scalars().all())
+
+    # If query is specified and results are few, fetch from Google Books & Open Library
+    if q and len(books) < limit and offset == 0:
+        clean_q = q.strip()
+        if len(clean_q) >= 2:
+            try:
+                external_books = await isbn_service.search_external_books(clean_q, limit=limit - len(books))
+                for ext in external_books:
+                    # Check if already present in DB
+                    conditions = []
+                    if ext.get("isbn"):
+                        conditions.append(GlobalBook.isbn == ext["isbn"])
+                    if ext.get("isbn13"):
+                        conditions.append(GlobalBook.isbn13 == ext["isbn13"])
+                    
+                    existing = None
+                    if conditions:
+                        res = await db.execute(select(GlobalBook).where(or_(*conditions)))
+                        existing = res.scalar_one_or_none()
+                    
+                    if not existing:
+                        # Check by exact title and author
+                        res_title = await db.execute(
+                            select(GlobalBook).where(
+                                GlobalBook.title == ext["title"],
+                                GlobalBook.author == ext["author"],
+                            )
+                        )
+                        existing = res_title.scalar_one_or_none()
+
+                    if existing:
+                        if existing not in books:
+                            books.append(existing)
+                    else:
+                        new_book = GlobalBook(
+                            title=ext["title"],
+                            author=ext["author"],
+                            publisher=ext.get("publisher"),
+                            isbn=ext.get("isbn"),
+                            isbn13=ext.get("isbn13"),
+                            published_year=ext.get("published_year"),
+                            page_count=ext.get("pageCount") or ext.get("page_count"),
+                            language=ext.get("language", "es"),
+                            description=ext.get("description"),
+                            cover_url=ext.get("cover_url"),
+                            source=ext.get("source", "googlebooks"),
+                        )
+                        db.add(new_book)
+                        await db.flush()
+                        books.append(new_book)
+            except Exception as e:
+                # Log and continue with local results
+                import logging
+                logging.getLogger(__name__).warning("Error fetching external books: %s", e)
 
     return [GlobalBookSearchResult.model_validate(b) for b in books]
 
