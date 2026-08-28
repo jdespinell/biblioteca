@@ -31,18 +31,19 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
+    mode: "onTouched",
   });
 
   const onSubmit = async (data: LoginForm) => {
     setApiError(null);
     try {
       await login(data.email, data.password);
-      router.push(`/${locale}`);
+      window.location.href = `/${locale}`;
     } catch (e) {
       if (e instanceof ApiError) {
         setApiError(e.message);
       } else {
-        setApiError(t("loginError"));
+        setApiError("Credenciales inválidas o error de conexión.");
       }
     }
   };

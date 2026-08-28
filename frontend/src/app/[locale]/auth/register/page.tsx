@@ -42,6 +42,7 @@ export default function RegisterPage() {
     formState: { errors, isSubmitting },
   } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
+    mode: "onTouched",
   });
 
   const onSubmit = async (data: RegisterForm) => {
@@ -53,12 +54,12 @@ export default function RegisterPage() {
         full_name: data.full_name,
       });
       await mutate(user, false);
-      router.push(`/${locale}`);
+      window.location.href = `/${locale}`;
     } catch (e) {
       if (e instanceof ApiError) {
         setApiError(e.message);
       } else {
-        setApiError(t("registerError"));
+        setApiError("Error al registrar la cuenta. Intenta de nuevo.");
       }
     }
   };
@@ -112,10 +113,14 @@ export default function RegisterPage() {
                   {...register(field.name)}
                   type={field.type}
                   placeholder={field.placeholder}
-                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition"
+                  className={`w-full px-4 py-2.5 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:border-transparent transition ${
+                    errors[field.name]
+                      ? "border-red-400 focus:ring-red-400 bg-red-50/10"
+                      : "border-gray-200 focus:ring-primary-500"
+                  }`}
                 />
                 {errors[field.name] && (
-                  <p className="mt-1 text-xs text-red-500">
+                  <p className="mt-1 text-xs text-red-500 font-medium">
                     {errors[field.name]?.message}
                   </p>
                 )}
