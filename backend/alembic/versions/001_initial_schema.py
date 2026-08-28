@@ -17,29 +17,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # ── ENUMS (Idempotent creation) ───────────────────────────────────────────
-    op.execute("""
-    DO $$ BEGIN
-        CREATE TYPE book_source_enum AS ENUM ('manual', 'openlibrary', 'googlebooks', 'ai');
-    EXCEPTION
-        WHEN duplicate_object THEN null;
-    END $$;
-    """)
-    op.execute("""
-    DO $$ BEGIN
-        CREATE TYPE book_status_enum AS ENUM ('unread', 'reading', 'read', 'wishlist');
-    EXCEPTION
-        WHEN duplicate_object THEN null;
-    END $$;
-    """)
-    op.execute("""
-    DO $$ BEGIN
-        CREATE TYPE attachment_type_enum AS ENUM ('pdf', 'image');
-    EXCEPTION
-        WHEN duplicate_object THEN null;
-    END $$;
-    """)
-
     # ── users ─────────────────────────────────────────────────────────────────
     op.create_table(
         "users",
@@ -71,7 +48,7 @@ def upgrade() -> None:
         sa.Column("description", sa.Text(), nullable=True),
         sa.Column("published_year", sa.Integer(), nullable=True),
         sa.Column("page_count", sa.Integer(), nullable=True),
-        sa.Column("source", sa.Enum("manual", "openlibrary", "googlebooks", "ai", name="book_source_enum", create_type=False), nullable=False, server_default="manual"),
+        sa.Column("source", sa.String(50), nullable=False, server_default="manual"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.UniqueConstraint("isbn", name="uq_global_books_isbn"),
         sa.UniqueConstraint("isbn13", name="uq_global_books_isbn13"),
@@ -102,7 +79,7 @@ def upgrade() -> None:
         sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("global_book_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("location_id", postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column("status", sa.Enum("unread", "reading", "read", "wishlist", name="book_status_enum", create_type=False), nullable=False, server_default="unread"),
+        sa.Column("status", sa.String(50), nullable=False, server_default="unread"),
         sa.Column("rating", sa.Integer(), nullable=True),
         sa.Column("added_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
@@ -140,7 +117,7 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("user_book_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("file_key", sa.String(1000), nullable=False),
-        sa.Column("file_type", sa.Enum("pdf", "image", name="attachment_type_enum", create_type=False), nullable=False),
+        sa.Column("file_type", sa.String(50), nullable=False),
         sa.Column("original_filename", sa.String(255), nullable=False),
         sa.Column("uploaded_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.ForeignKeyConstraint(["user_book_id"], ["user_books.id"], name="fk_attachments_user_book_id_user_books", ondelete="CASCADE"),
@@ -170,7 +147,3 @@ def downgrade() -> None:
     op.drop_table("locations")
     op.drop_table("global_books")
     op.drop_table("users")
-
-    op.execute("DROP TYPE IF EXISTS attachment_type_enum")
-    op.execute("DROP TYPE IF EXISTS book_status_enum")
-    op.execute("DROP TYPE IF EXISTS book_source_enum")

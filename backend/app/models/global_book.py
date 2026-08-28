@@ -45,13 +45,7 @@ class GlobalBook(Base):
 
     # Track where this book was sourced from
     source: Mapped[str] = mapped_column(
-        Enum(
-            "manual",
-            "openlibrary",
-            "googlebooks",
-            "ai",
-            name="book_source_enum",
-        ),
+        String(50),
         default="manual",
         nullable=False,
     )

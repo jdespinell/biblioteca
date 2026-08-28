@@ -63,13 +63,7 @@ class UserBook(Base):
     )
 
     status: Mapped[str] = mapped_column(
-        Enum(
-            "unread",
-            "reading",
-            "read",
-            "wishlist",
-            name="book_status_enum",
-        ),
+        String(50),
         default="unread",
         nullable=False,
         index=True,

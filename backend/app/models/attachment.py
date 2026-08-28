@@ -36,10 +36,7 @@ class Attachment(Base):
     # S3/MinIO object key (e.g., 'users/{user_id}/books/{book_id}/file.pdf')
     file_key: Mapped[str] = mapped_column(String(1000), nullable=False)
 
-    file_type: Mapped[str] = mapped_column(
-        Enum("pdf", "image", name="attachment_type_enum"),
-        nullable=False,
-    )
+    file_type: Mapped[str] = mapped_column(String(50), nullable=False)
 
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
 
