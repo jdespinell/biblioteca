@@ -35,16 +35,16 @@ async def register(
     db: DBSession,
 ) -> UserResponse:
     """Register a new user account. Sets HttpOnly JWT cookies on success."""
-    # Check for existing email
-    existing = await db.execute(select(User).where(User.email == body.email))
+    clean_email = body.email.strip().lower()
+    existing = await db.execute(select(User).where(func.lower(User.email) == clean_email))
     if existing.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="An account with this email already exists",
+            detail="Ya existe una cuenta con este correo electrónico",
         )
 
     user = User(
-        email=body.email,
+        email=clean_email,
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
         preferred_language=body.preferred_language,
@@ -66,14 +66,15 @@ async def login(
     db: DBSession,
 ) -> UserResponse:
     """Authenticate with email/password. Sets HttpOnly JWT cookies on success."""
-    result = await db.execute(select(User).where(User.email == body.email))
+    clean_email = body.email.strip().lower()
+    result = await db.execute(select(User).where(func.lower(User.email) == clean_email))
     user: User | None = result.scalar_one_or_none()
 
     # Constant-time check to prevent timing attacks
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email or password",
+            detail="Correo o contraseña incorrectos",
         )
 
     if not user.is_active:

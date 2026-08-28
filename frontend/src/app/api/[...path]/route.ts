@@ -43,18 +43,34 @@ async function handler(
 
     const resHeaders = new Headers();
     backendRes.headers.forEach((val, key) => {
-      if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
-        resHeaders.append(key, val);
+      const lowerKey = key.toLowerCase();
+      if (lowerKey !== "set-cookie" && !HOP_BY_HOP_HEADERS.has(lowerKey)) {
+        resHeaders.set(key, val);
       }
     });
 
     const resBody = await backendRes.arrayBuffer();
 
-    return new NextResponse(resBody, {
+    const response = new NextResponse(resBody, {
       status: backendRes.status,
       statusText: backendRes.statusText,
       headers: resHeaders,
     });
+
+    // Forward each Set-Cookie header individually to prevent comma-concatenation bugs
+    if (typeof backendRes.headers.getSetCookie === "function") {
+      const cookies = backendRes.headers.getSetCookie();
+      for (const cookie of cookies) {
+        response.headers.append("set-cookie", cookie);
+      }
+    } else {
+      const rawCookie = backendRes.headers.get("set-cookie");
+      if (rawCookie) {
+        response.headers.set("set-cookie", rawCookie);
+      }
+    }
+
+    return response;
   } catch (err) {
     console.error(`[API Proxy Error] ${req.method} ${targetUrl}:`, err);
     return NextResponse.json(
