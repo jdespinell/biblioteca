@@ -1,0 +1,44 @@
+version: "3.9"
+
+# Production overrides — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  postgres:
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports: []  # Don't expose DB port externally in production
+
+  minio:
+    restart: always
+    ports: []  # Only expose console via Nginx if needed
+
+  backend:
+    build:
+      target: production
+    restart: always
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+    environment:
+      ENVIRONMENT: production
+      COOKIE_SECURE: "true"
+      COOKIE_SAMESITE: strict
+    # Don't mount source in production
+    volumes: []
+
+  frontend:
+    build:
+      target: production
+    restart: always
+    volumes: []
+    environment:
+      NODE_ENV: production
+
+  nginx:
+    restart: always
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro  # TLS certs (Let's Encrypt)
+    ports:
+      - "80:80"
+      - "443:443"

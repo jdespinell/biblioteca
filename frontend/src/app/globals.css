@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* KaTeX math rendering */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* Markdown editor adjustments */
+.w-md-editor {
+  border-radius: 0.5rem !important;
+}
+
+.w-md-editor-text {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace !important;
+}

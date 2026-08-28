@@ -1,0 +1,158 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PUERTOS DEL HOST (sin conflictos con otros servicios del servidor)
+#
+#  biblioteca_postgres  →  host:5434   (5432 libre, pero se usa 5434 por claridad)
+#  biblioteca_minio     →  host:9002   (9000 = portainer, 9001 libre pero 9002 + 9003 más claro)
+#  biblioteca_minio     →  host:9003   (consola MinIO)
+#  biblioteca_backend   →  host:8002   (8000 = finanzas_backend, 8001 libre pero 8002 seguro)
+#  biblioteca_frontend  →  host:3003   (3000 libre, 3001 = medfamilia, 3002 libre, 3003 = más claro)
+#
+#  nginx ELIMINADO: ya tienes Nginx Proxy Manager en puertos 80/443.
+#  Configura en NPM:
+#    biblioteca.tudominio.com  →  localhost:3003  (frontend)
+#    biblioteca.tudominio.com/api → localhost:8002 (backend)
+#  O un único proxy host al frontend si Next.js reescribe /api internamente.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ─────────────────────────────────────────────
+  # PostgreSQL 16
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: biblioteca_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-biblioteca}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-biblioteca_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-biblioteca_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      # 5432 host está libre, pero usamos 5434 para evitar confusión con otros postgres
+      - "127.0.0.1:5434:5432"   # Solo en loopback — DB no debe ser pública
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-biblioteca} -d ${POSTGRES_DB:-biblioteca_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - biblioteca_net
+
+  # ─────────────────────────────────────────────
+  # MinIO (Object Storage — S3 compatible)
+  # ─────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: biblioteca_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin_secret}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:9002:9000"   # API MinIO  (9000 = portainer → usamos 9002)
+      - "127.0.0.1:9003:9001"   # Consola web MinIO
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - biblioteca_net
+
+  # ─────────────────────────────────────────────
+  # MinIO bucket initialization (one-shot)
+  # ─────────────────────────────────────────────
+  minio-init:
+    image: minio/mc:latest
+    container_name: biblioteca_minio_init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin_secret};
+      mc mb --ignore-existing local/${MINIO_BUCKET_NAME:-biblioteca-files};
+      mc anonymous set download local/${MINIO_BUCKET_NAME:-biblioteca-files}/covers;
+      exit 0;
+      "
+    networks:
+      - biblioteca_net
+
+  # ─────────────────────────────────────────────
+  # Backend (FastAPI)
+  # ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: biblioteca_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Comunicación interna Docker: siempre usa el nombre del servicio, no localhost
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-biblioteca}:${POSTGRES_PASSWORD:-biblioteca_secret}@postgres:5432/${POSTGRES_DB:-biblioteca_db}
+      MINIO_ENDPOINT: http://minio:9000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "0.0.0.0:8002:8000"   # 8000 = finanzas_backend → usamos 8002
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    command: >
+      sh -c "
+        alembic upgrade head &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+    networks:
+      - biblioteca_net
+
+  # ─────────────────────────────────────────────
+  # Frontend (Next.js)
+  # ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: biblioteca_frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # El navegador del cliente accede al backend a través del NPM.
+      # Cambia SERVER_IP por la IP o dominio de tu servidor.
+      # Si ya tienes dominio configurado en NPM usa: https://biblioteca.tudominio.com/api
+      NEXT_PUBLIC_API_URL: http://${SERVER_IP:-localhost}:8002/api
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    ports:
+      - "0.0.0.0:3003:3000"   # 3001 = medfamilia → usamos 3003
+    depends_on:
+      - backend
+    networks:
+      - biblioteca_net
+
+# ─────────────────────────────────────────────
+# Volumes & Networks
+# ─────────────────────────────────────────────
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  biblioteca_net:
+    driver: bridge
