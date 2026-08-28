@@ -24,7 +24,9 @@ RUN npm install
 COPY . .
 
 # Build Next.js app
-ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    NEXT_PUBLIC_API_URL=/api \
+    NODE_ENV=production
 RUN npm run build
 
 # ── Production stage ──────────────────────────────────────────────────────────

@@ -123,18 +123,15 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      target: development
+      target: production
     container_name: biblioteca_frontend
     restart: unless-stopped
     env_file:
       - .env
     environment:
+      NODE_ENV: production
       NEXT_PUBLIC_API_URL: /api
       INTERNAL_API_URL: http://backend:8000/api
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
     ports:
       - "0.0.0.0:3003:3000"   # 3001 = medfamilia → usamos 3003
     depends_on:
