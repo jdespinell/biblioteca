@@ -3,7 +3,18 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { Search, QrCode, Camera, ArrowLeft, Plus, Loader2, Edit3, BookOpen } from "lucide-react";
+import {
+  Search,
+  QrCode,
+  Camera,
+  ArrowLeft,
+  Plus,
+  Loader2,
+  Edit3,
+  BookOpen,
+  MapPin,
+  X,
+} from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -42,6 +53,11 @@ export default function AddBookPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Quick Location Creation Modal State
+  const [showLocModal, setShowLocModal] = useState(false);
+  const [newLocName, setNewLocName] = useState("");
+  const [isCreatingLoc, setIsCreatingLoc] = useState(false);
+
   // Manual book form state
   const [manualTitle, setManualTitle] = useState("");
   const [manualAuthor, setManualAuthor] = useState("");
@@ -53,7 +69,27 @@ export default function AddBookPage() {
   const [manualDescription, setManualDescription] = useState("");
   const [manualCoverUrl, setManualCoverUrl] = useState("");
 
-  const { data: locations } = useSWR<Location[]>("locations", locationsApi.list);
+  const { data: locations, mutate: mutateLocations } = useSWR<Location[]>(
+    "locations",
+    locationsApi.list
+  );
+
+  const handleCreateLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLocName.trim()) return;
+    setIsCreatingLoc(true);
+    try {
+      const created = await locationsApi.create({ name: newLocName.trim() });
+      await mutateLocations([...(locations ?? []), created], false);
+      setSelectedLocationId(created.id);
+      setNewLocName("");
+      setShowLocModal(false);
+    } catch (err) {
+      console.error("Error creating location:", err);
+    } finally {
+      setIsCreatingLoc(false);
+    }
+  };
 
   const handleSearch = async () => {
     const clean = query.trim();
@@ -61,7 +97,6 @@ export default function AddBookPage() {
     setIsSearching(true);
     setErrorMessage(null);
     try {
-      // If query is an ISBN (10 or 13 digits), try direct ISBN lookup
       const cleanIsbn = clean.replace(/[-\s]/g, "");
       if (/^(97[89])?\d{9}[\dX]$/i.test(cleanIsbn)) {
         const result = await booksApi.lookupISBN(cleanIsbn);
@@ -449,7 +484,7 @@ export default function AddBookPage() {
               </button>
               <button
                 type="submit"
-                className="flex-1 py-2.5 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors text-sm"
+                className="flex-1 py-2.5 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors text-sm font-semibold"
               >
                 Continuar a estante y estado →
               </button>
@@ -494,7 +529,7 @@ export default function AddBookPage() {
           {/* Status */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Estado inicial</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {(["unread", "reading", "read", "wishlist"] as const).map((s) => (
                 <button
                   key={s}
@@ -511,22 +546,36 @@ export default function AddBookPage() {
             </div>
           </div>
 
-          {/* Location */}
-          {locations && locations.length > 0 && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">{t("location")}</label>
+          {/* Location Selector + Quick Create Button */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Ubicación / Estantería Física
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowLocModal(true)}
+                className="text-xs font-medium text-primary-600 hover:text-primary-700 flex items-center gap-1"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Nueva estantería
+              </button>
+            </div>
+            <div className="flex gap-2">
               <select
                 value={selectedLocationId}
                 onChange={(e) => setSelectedLocationId(e.target.value)}
                 className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
               >
-                <option value="">Sin ubicación</option>
-                {locations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>{loc.name}</option>
+                <option value="">Sin ubicación asignada</option>
+                {locations?.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.name}
+                  </option>
                 ))}
               </select>
             </div>
-          )}
+          </div>
 
           {/* Tags */}
           <div>
@@ -576,11 +625,66 @@ export default function AddBookPage() {
             <button
               onClick={handleConfirm}
               disabled={isAdding}
-              className="flex-1 py-2.5 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
+              className="flex-1 py-2.5 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm font-semibold"
             >
               {isAdding && <Loader2 className="h-4 w-4 animate-spin" />}
               Agregar a Biblioteca
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Location Create Modal */}
+      {showLocModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-primary-600" />
+                <h3 className="font-bold text-gray-900 text-base">Nueva Estantería / Ubicación</h3>
+              </div>
+              <button
+                onClick={() => setShowLocModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateLocation} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Nombre de la ubicación
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Estante Sala, Oficina, Biblioteca"
+                  value={newLocName}
+                  onChange={(e) => setNewLocName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLocModal(false)}
+                  className="flex-1 py-2 border border-gray-200 text-gray-600 rounded-lg text-xs font-medium hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCreatingLoc || !newLocName.trim()}
+                  className="flex-1 py-2 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-1"
+                >
+                  {isCreatingLoc && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Crear y Asignar
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

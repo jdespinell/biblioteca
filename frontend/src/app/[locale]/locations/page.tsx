@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import useSWR, { mutate } from "swr";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import Link from "next/link";
 import { MapPin, Plus, Edit2, Trash2, BookOpen, X, Loader2 } from "lucide-react";
 import { locationsApi, type Location } from "@/lib/api/locations";
 
