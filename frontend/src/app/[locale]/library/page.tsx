@@ -11,12 +11,11 @@ import { locationsApi, type Location } from "@/lib/api/locations";
 import BookCard from "@/components/book/BookCard";
 import { useAuth } from "@/hooks/useAuth";
 
-const STATUS_FILTERS: { value: BookStatus | "all"; label: string }[] = [
-  { value: "all", label: "Todos los estados" },
+const STATUS_FILTERS: { value: "all" | "reading" | "unread" | "read"; label: string }[] = [
+  { value: "all", label: "Todos en Biblioteca" },
   { value: "reading", label: "Leyendo" },
   { value: "unread", label: "Por Leer" },
   { value: "read", label: "Leídos" },
-  { value: "wishlist", label: "Wishlist" },
 ];
 
 export default function LibraryPage() {
@@ -26,7 +25,7 @@ export default function LibraryPage() {
   const initialLocation = searchParams?.get("location_id") || "all";
 
   const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const [statusFilter, setStatusFilter] = useState<BookStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "reading" | "unread" | "read">("all");
   const [locationFilter, setLocationFilter] = useState<string>(initialLocation);
   const [search, setSearch] = useState("");
 
@@ -50,6 +49,7 @@ export default function LibraryPage() {
   const { data: books, isLoading } = useSWR<UserBook[]>(swrKey, () =>
     userBooksApi.list({
       status: statusFilter === "all" ? undefined : statusFilter,
+      exclude_wishlist: statusFilter === "all",
       location_id: locationFilter === "all" ? undefined : locationFilter,
       search: search || undefined,
       limit: 100,

@@ -325,57 +325,78 @@ export default function BookPage({ params }: BookPageProps) {
                 </div>
               </div>
 
-              {/* Rating & Shelf Location */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                {/* Rating */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                    Calificación
-                  </label>
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => handleRatingChange(star)}
-                        className="p-1 hover:scale-125 transition-transform"
-                      >
-                        <Star
-                          className={`h-6 w-6 ${
-                            (userBook.rating ?? 0) >= star
-                              ? "fill-amber-400 text-amber-400"
-                              : "text-gray-200 hover:text-amber-200"
-                          }`}
-                        />
-                      </button>
-                    ))}
-                    {userBook.rating && (
-                      <span className="text-xs text-gray-500 ml-2 font-medium">
-                        {userBook.rating}/5
-                      </span>
-                    )}
+              {/* Rating & Shelf Location (Only for acquired books, not for wishlist) */}
+              {userBook.status === "wishlist" ? (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-800">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xl">🎁</span>
+                    <div>
+                      <p className="font-semibold text-amber-900">Libro en tu Lista de Deseos (Wishlist)</p>
+                      <p className="text-amber-700 mt-0.5">
+                        Aún no tienes este libro físicamente. No requiere estantería.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleStatusChange("unread")}
+                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg transition shadow-sm whitespace-nowrap text-xs"
+                  >
+                    ✓ Marcar como adquirido
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                  {/* Rating */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Calificación
+                    </label>
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => handleRatingChange(star)}
+                          className="p-1 hover:scale-125 transition-transform"
+                        >
+                          <Star
+                            className={`h-6 w-6 ${
+                              (userBook.rating ?? 0) >= star
+                                ? "fill-amber-400 text-amber-400"
+                                : "text-gray-200 hover:text-amber-200"
+                            }`}
+                          />
+                        </button>
+                      ))}
+                      {userBook.rating && (
+                        <span className="text-xs text-gray-500 ml-2 font-medium">
+                          {userBook.rating}/5
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Location */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Estantería / Ubicación Física
+                    </label>
+                    <select
+                      value={userBook.location?.id ?? ""}
+                      onChange={(e) => handleLocationChange(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                    >
+                      <option value="">Sin ubicación asignada</option>
+                      {locations?.map((loc) => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-
-                {/* Location */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
-                    Estantería / Ubicación Física
-                  </label>
-                  <select
-                    value={userBook.location?.id ?? ""}
-                    onChange={(e) => handleLocationChange(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-                  >
-                    <option value="">Sin ubicación asignada</option>
-                    {locations?.map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              )}
 
               {/* Tags */}
               <div className="pt-2">

@@ -96,6 +96,7 @@ async def list_user_books(
     current_user: CurrentUser,
     db: DBSession,
     status_filter: str | None = Query(default=None, alias="status"),
+    exclude_wishlist: bool = Query(default=False),
     location_id: uuid.UUID | None = Query(default=None),
     tag: str | None = Query(default=None),
     search: str | None = Query(default=None, max_length=200),
@@ -116,6 +117,8 @@ async def list_user_books(
 
     if status_filter:
         query = query.where(UserBook.status == status_filter)
+    elif exclude_wishlist:
+        query = query.where(UserBook.status != "wishlist")
 
     if location_id:
         query = query.where(UserBook.location_id == location_id)

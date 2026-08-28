@@ -608,10 +608,15 @@ export default function AddBookPage() {
               {(["unread", "reading", "read", "wishlist"] as const).map((s) => (
                 <button
                   key={s}
-                  onClick={() => setSelectedStatus(s)}
+                  onClick={() => {
+                    setSelectedStatus(s);
+                    if (s === "wishlist") {
+                      setSelectedLocationId("");
+                    }
+                  }}
                   className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
                     selectedStatus === s
-                      ? "bg-primary-600 text-white border-primary-600"
+                      ? "bg-primary-600 text-white border-primary-600 shadow-sm"
                       : "border-gray-200 text-gray-600 hover:bg-gray-50"
                   }`}
                 >
@@ -621,36 +626,45 @@ export default function AddBookPage() {
             </div>
           </div>
 
-          {/* Location Selector + Quick Create Button */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Ubicación / Estantería Física
-              </label>
-              <button
-                type="button"
-                onClick={() => setShowLocModal(true)}
-                className="text-xs font-medium text-primary-600 hover:text-primary-700 flex items-center gap-1"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Nueva estantería
-              </button>
+          {/* Location Selector (Only for physical books, NOT for wishlist) */}
+          {selectedStatus !== "wishlist" ? (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Ubicación / Estantería Física
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowLocModal(true)}
+                  className="text-xs font-medium text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Nueva estantería
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <select
+                  value={selectedLocationId}
+                  onChange={(e) => setSelectedLocationId(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                >
+                  <option value="">Sin ubicación asignada</option>
+                  {locations?.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <select
-                value={selectedLocationId}
-                onChange={(e) => setSelectedLocationId(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
-              >
-                <option value="">Sin ubicación asignada</option>
-                {locations?.map((loc) => (
-                  <option key={loc.id} value={loc.id}>
-                    {loc.name}
-                  </option>
-                ))}
-              </select>
+          ) : (
+            <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3.5 flex items-center gap-2.5 text-xs text-amber-800">
+              <span className="text-base">🎁</span>
+              <span>
+                Este libro se guardará en tu <strong>Lista de Deseos</strong>. No requiere estantería física ya que aún no lo has adquirido.
+              </span>
             </div>
-          </div>
+          )}
 
           {/* Tags */}
           <div>

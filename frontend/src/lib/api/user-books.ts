@@ -48,6 +48,7 @@ export interface UserBookUpdate {
 
 export interface UserBooksFilter {
   status?: BookStatus;
+  exclude_wishlist?: boolean;
   location_id?: string;
   tag?: string;
   search?: string;
@@ -62,6 +63,7 @@ export const userBooksApi = {
   list: (filters: UserBooksFilter = {}) => {
     const params = new URLSearchParams();
     if (filters.status) params.set("status", filters.status);
+    if (filters.exclude_wishlist) params.set("exclude_wishlist", "true");
     if (filters.location_id) params.set("location_id", filters.location_id);
     if (filters.tag) params.set("tag", filters.tag);
     if (filters.search) params.set("search", filters.search);
