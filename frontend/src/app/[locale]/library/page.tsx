@@ -8,6 +8,8 @@ import Link from "next/link";
 import { userBooksApi, type UserBook, type BookStatus } from "@/lib/api/user-books";
 import BookCard from "@/components/book/BookCard";
 
+import { useAuth } from "@/hooks/useAuth";
+
 const STATUS_FILTERS: { value: BookStatus | "all"; label: string }[] = [
   { value: "all", label: "Todos" },
   { value: "unread", label: "Por Leer" },
@@ -19,10 +21,11 @@ const STATUS_FILTERS: { value: BookStatus | "all"; label: string }[] = [
 export default function LibraryPage() {
   const t = useTranslations("books");
   const locale = useLocale();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [statusFilter, setStatusFilter] = useState<BookStatus | "all">("all");
   const [search, setSearch] = useState("");
 
-  const swrKey = ["user-books-library", statusFilter, search];
+  const swrKey = isAuthenticated ? ["user-books-library", statusFilter, search] : null;
 
   const { data: books, isLoading } = useSWR<UserBook[]>(swrKey, () =>
     userBooksApi.list({
@@ -43,6 +46,32 @@ export default function LibraryPage() {
       false
     );
   };
+
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <div className="text-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm max-w-md mx-auto p-8 space-y-4">
+        <BookOpen className="h-12 w-12 text-primary-500 mx-auto" />
+        <h2 className="text-xl font-bold text-gray-900">Tu Biblioteca Personal</h2>
+        <p className="text-sm text-gray-500">
+          Inicia sesión o crea una cuenta gratis para catalogar tus libros, gestionar estanterías y tomar notas.
+        </p>
+        <div className="flex gap-3 justify-center pt-2">
+          <Link
+            href={`/${locale}/auth/login`}
+            className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 text-sm transition"
+          >
+            Iniciar Sesión
+          </Link>
+          <Link
+            href={`/${locale}/auth/register`}
+            className="px-5 py-2.5 bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 text-sm transition shadow-sm"
+          >
+            Crear Cuenta
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

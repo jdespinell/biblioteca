@@ -82,11 +82,14 @@ function WishlistCard({ userBook, onAcquired }: { userBook: UserBook; onAcquired
   );
 }
 
+import { useAuth } from "@/hooks/useAuth";
+
 export default function WishlistPage() {
   const t = useTranslations("dashboard");
   const locale = useLocale();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
-  const swrKey = "user-books-wishlist";
+  const swrKey = isAuthenticated ? "user-books-wishlist" : null;
   const { data: wishlistBooks, isLoading } = useSWR<UserBook[]>(
     swrKey,
     () => userBooksApi.list({ status: "wishlist", limit: 100 })
@@ -96,6 +99,32 @@ export default function WishlistPage() {
     // Optimistically remove from wishlist
     mutate(swrKey, wishlistBooks?.filter((b) => b.id !== id), false);
   };
+
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <div className="text-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm max-w-md mx-auto p-8 space-y-4">
+        <Heart className="h-12 w-12 text-amber-500 mx-auto" />
+        <h2 className="text-xl font-bold text-gray-900">Tu Lista de Deseos</h2>
+        <p className="text-sm text-gray-500">
+          Inicia sesión para guardar libros que deseas comprar o leer más adelante.
+        </p>
+        <div className="flex gap-3 justify-center pt-2">
+          <Link
+            href={`/${locale}/auth/login`}
+            className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 text-sm transition"
+          >
+            Iniciar Sesión
+          </Link>
+          <Link
+            href={`/${locale}/auth/register`}
+            className="px-5 py-2.5 bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 text-sm transition shadow-sm"
+          >
+            Crear Cuenta
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

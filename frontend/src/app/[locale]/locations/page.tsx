@@ -92,16 +92,46 @@ function LocationModal({ location, onSave, onClose }: LocationModalProps) {
   );
 }
 
+import { useAuth } from "@/hooks/useAuth";
+
 export default function LocationsPage() {
   const t = useTranslations("locations");
   const tc = useTranslations("common");
+  const locale = useLocale();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [showModal, setShowModal] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | undefined>();
 
   const { data: locations, isLoading } = useSWR<Location[]>(
-    "locations",
+    isAuthenticated ? "locations" : null,
     locationsApi.list
   );
+
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <div className="text-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm max-w-md mx-auto p-8 space-y-4">
+        <MapPin className="h-12 w-12 text-primary-500 mx-auto" />
+        <h2 className="text-xl font-bold text-gray-900">{t("title")}</h2>
+        <p className="text-sm text-gray-500">
+          Inicia sesión para crear estanterías y organizar la ubicación física de tus libros.
+        </p>
+        <div className="flex gap-3 justify-center pt-2">
+          <Link
+            href={`/${locale}/auth/login`}
+            className="px-5 py-2.5 bg-white border border-gray-200 text-gray-700 font-medium rounded-xl hover:bg-gray-50 text-sm transition"
+          >
+            Iniciar Sesión
+          </Link>
+          <Link
+            href={`/${locale}/auth/register`}
+            className="px-5 py-2.5 bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 text-sm transition shadow-sm"
+          >
+            Crear Cuenta
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const handleCreate = async (data: { name: string; description?: string }) => {
     const created = await locationsApi.create(data);

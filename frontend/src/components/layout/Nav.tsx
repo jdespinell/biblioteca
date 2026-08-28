@@ -32,13 +32,18 @@ export default function Nav() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
 
-  const navLinks = [
-    { href: `/${locale}`, label: t("home"), icon: BookOpen },
-    { href: `/${locale}/library`, label: t("library"), icon: BookOpen },
-    { href: `/${locale}/wishlist`, label: t("wishlist"), icon: Heart },
-    { href: `/${locale}/discover`, label: t("discover"), icon: Compass },
-    { href: `/${locale}/locations`, label: t("locations"), icon: MapPin },
-  ];
+  const navLinks = isAuthenticated
+    ? [
+        { href: `/${locale}`, label: t("home"), icon: BookOpen },
+        { href: `/${locale}/library`, label: t("library"), icon: BookOpen },
+        { href: `/${locale}/wishlist`, label: t("wishlist"), icon: Heart },
+        { href: `/${locale}/discover`, label: t("discover"), icon: Compass },
+        { href: `/${locale}/locations`, label: t("locations"), icon: MapPin },
+      ]
+    : [
+        { href: `/${locale}`, label: t("home"), icon: BookOpen },
+        { href: `/${locale}/discover`, label: t("discover"), icon: Compass },
+      ];
 
   const switchLocale = (newLocale: string) => {
     // Replace the current locale segment in the path
