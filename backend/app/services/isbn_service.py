@@ -151,81 +151,134 @@ async def _lookup_google_books(isbn: str) -> ISBNLookupResponse:
     )
 
 
+OPEN_LIBRARY_SEARCH_URL = "https://openlibrary.org/search.json"
+USER_AGENT = "BibliotecaApp/1.0 (https://biblioteca.juliancloud.site)"
+
+
 async def search_external_books(query: str, limit: int = 10) -> list[dict]:
     """
-    Search Google Books API by title, author, or keyword.
+    Search Open Library (primary) and Google Books (fallback) by title, author, or keyword.
     Returns a normalized list of book dictionaries.
     """
     results: list[dict] = []
     seen_titles: set[str] = set()
 
+    # ── 1. Search Open Library first (reliable, rich catalog, no 429 IP blocks) ──
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(
-                GOOGLE_BOOKS_URL,
-                params={
-                    "q": query,
-                    "maxResults": min(max(limit, 5), 20),
-                    "printType": "books",
-                },
+                OPEN_LIBRARY_SEARCH_URL,
+                params={"q": query, "limit": min(max(limit, 8), 20)},
+                headers={"User-Agent": USER_AGENT},
             )
             if resp.status_code == 200:
                 data = resp.json()
-                for item in data.get("items", []):
-                    vol = item.get("volumeInfo", {})
-                    title = vol.get("title")
+                for doc in data.get("docs", []):
+                    title = doc.get("title")
                     if not title:
                         continue
 
-                    # Authors
-                    authors = vol.get("authors", [])
-                    author_str = ", ".join(authors) if authors else "Autor desconocido"
+                    authors = doc.get("author_name", [])
+                    author_str = ", ".join(authors[:2]) if authors else "Autor desconocido"
 
-                    # Deduplicate by title + author
                     dedup_key = f"{title.lower().strip()}|{author_str.lower().strip()}"
                     if dedup_key in seen_titles:
                         continue
                     seen_titles.add(dedup_key)
 
-                    # ISBNs
-                    isbn10 = None
-                    isbn13 = None
-                    for ident in vol.get("industryIdentifiers", []):
-                        if ident.get("type") == "ISBN_10":
-                            isbn10 = ident.get("identifier")
-                        elif ident.get("type") == "ISBN_13":
-                            isbn13 = ident.get("identifier")
-
-                    # Cover
-                    img = vol.get("imageLinks", {})
-                    cover = (
-                        img.get("thumbnail")
-                        or img.get("smallThumbnail")
-                        or img.get("medium")
+                    cover_i = doc.get("cover_i")
+                    cover_url = (
+                        f"https://covers.openlibrary.org/b/id/{cover_i}-M.jpg"
+                        if cover_i
+                        else None
                     )
-                    if cover:
-                        cover = cover.replace("http://", "https://")
 
-                    # Year
-                    pub_date = vol.get("publishedDate", "")
-                    year: int | None = None
-                    if pub_date and len(pub_date) >= 4 and pub_date[:4].isdigit():
-                        year = int(pub_date[:4])
+                    isbns = doc.get("isbn", [])
+                    isbn = isbns[0] if isbns else None
+
+                    year = doc.get("first_publish_year")
+                    languages = doc.get("language", ["es"])
+                    lang = languages[0] if languages else "es"
 
                     results.append({
                         "title": title,
                         "author": author_str,
-                        "publisher": vol.get("publisher"),
-                        "isbn": isbn10,
-                        "isbn13": isbn13,
+                        "publisher": (doc.get("publisher") or [None])[0],
+                        "isbn": isbn if isbn and len(isbn) == 10 else None,
+                        "isbn13": isbn if isbn and len(isbn) == 13 else None,
                         "published_year": year,
-                        "page_count": vol.get("pageCount"),
-                        "language": vol.get("language", "es"),
-                        "description": vol.get("description"),
-                        "cover_url": cover,
-                        "source": "googlebooks",
+                        "page_count": doc.get("number_of_pages_median"),
+                        "language": lang,
+                        "description": None,
+                        "cover_url": cover_url,
+                        "source": "openlibrary",
                     })
     except Exception as e:
-        logger.warning("External books search failed for %s: %s", query, e)
+        logger.warning("Open Library search failed for %s: %s", query, e)
+
+    # ── 2. Fallback / Supplement with Google Books ──
+    if len(results) < limit:
+        try:
+            async with httpx.AsyncClient(timeout=6.0) as client:
+                resp = await client.get(
+                    GOOGLE_BOOKS_URL,
+                    params={
+                        "q": query,
+                        "maxResults": min(max(limit - len(results), 5), 10),
+                        "printType": "books",
+                    },
+                    headers={"User-Agent": USER_AGENT},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    for item in data.get("items", []):
+                        vol = item.get("volumeInfo", {})
+                        title = vol.get("title")
+                        if not title:
+                            continue
+
+                        authors = vol.get("authors", [])
+                        author_str = ", ".join(authors) if authors else "Autor desconocido"
+
+                        dedup_key = f"{title.lower().strip()}|{author_str.lower().strip()}"
+                        if dedup_key in seen_titles:
+                            continue
+                        seen_titles.add(dedup_key)
+
+                        isbn10 = None
+                        isbn13 = None
+                        for ident in vol.get("industryIdentifiers", []):
+                            if ident.get("type") == "ISBN_10":
+                                isbn10 = ident.get("identifier")
+                            elif ident.get("type") == "ISBN_13":
+                                isbn13 = ident.get("identifier")
+
+                        img = vol.get("imageLinks", {})
+                        cover = (
+                            img.get("thumbnail")
+                            or img.get("smallThumbnail")
+                            or img.get("medium")
+                        )
+                        if cover:
+                            cover = cover.replace("http://", "https://")
+
+                        pub_date = vol.get("publishedDate", "")
+                        year = int(pub_date[:4]) if pub_date and len(pub_date) >= 4 and pub_date[:4].isdigit() else None
+
+                        results.append({
+                            "title": title,
+                            "author": author_str,
+                            "publisher": vol.get("publisher"),
+                            "isbn": isbn10,
+                            "isbn13": isbn13,
+                            "published_year": year,
+                            "page_count": vol.get("pageCount"),
+                            "language": vol.get("language", "es"),
+                            "description": vol.get("description"),
+                            "cover_url": cover,
+                            "source": "googlebooks",
+                        })
+        except Exception as e:
+            logger.warning("Google Books fallback search failed for %s: %s", query, e)
 
     return results[:limit]
