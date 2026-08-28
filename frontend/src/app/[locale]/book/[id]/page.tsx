@@ -27,34 +27,12 @@ import { locationsApi, type Location } from "@/lib/api/locations";
 import { useAuth } from "@/hooks/useAuth";
 import dynamic from "next/dynamic";
 import { useState } from "react";
+import CommunityNoteCard from "@/components/notes/CommunityNoteCard";
 
 const MarkdownEditor = dynamic(
   () => import("@/components/editor/MarkdownEditor"),
   { ssr: false }
 );
-
-function PublicNoteCard({ note }: { note: PublicNote }) {
-  return (
-    <div className="bg-white rounded-xl p-5 space-y-3 border border-gray-100 shadow-sm">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-primary-100 text-primary-700 rounded-full flex items-center justify-center text-xs font-bold">
-            {(note.author_display_name || "U")[0].toUpperCase()}
-          </div>
-          <p className="text-sm font-semibold text-gray-800">
-            {note.author_display_name}
-          </p>
-        </div>
-        <span className="text-xs text-gray-400">
-          {new Date(note.updated_at).toLocaleDateString()}
-        </span>
-      </div>
-      <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">
-        {note.content}
-      </p>
-    </div>
-  );
-}
 
 interface BookPageProps {
   params: { id: string; locale: string };
@@ -484,7 +462,7 @@ export default function BookPage({ params }: BookPageProps) {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {publicNotes.map((note) => (
-              <PublicNoteCard key={note.id} note={note} />
+              <CommunityNoteCard key={note.id} note={note} />
             ))}
           </div>
         </div>
