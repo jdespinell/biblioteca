@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
-
 from app.core.dependencies import CurrentUser, DBSession
-from app.schemas.ai import CoverRecognitionRequest, CoverRecognitionResponse, ISBNLookupResponse
+from app.schemas.ai import (
+    CoverRecognitionRequest,
+    CoverRecognitionResponse,
+    ISBNLookupResponse,
+    BookSummarizeRequest,
+    BookSummarizeResponse,
+)
 from app.services import gemini_service, isbn_service
 
 router = APIRouter(prefix="/ai", tags=["ai"])
