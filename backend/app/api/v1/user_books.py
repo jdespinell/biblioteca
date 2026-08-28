@@ -90,6 +90,7 @@ async def get_stats(
     )
 
 
+@router.get("", response_model=list[UserBookResponse], include_in_schema=False)
 @router.get("/", response_model=list[UserBookResponse])
 async def list_user_books(
     current_user: CurrentUser,
@@ -137,6 +138,7 @@ async def list_user_books(
     return [_serialize_user_book(ub) for ub in user_books]
 
 
+@router.post("", response_model=UserBookResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=UserBookResponse, status_code=status.HTTP_201_CREATED)
 async def create_user_book(
     body: UserBookCreate,

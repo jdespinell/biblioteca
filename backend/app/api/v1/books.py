@@ -20,6 +20,7 @@ from app.services import isbn_service
 router = APIRouter(prefix="/books", tags=["books"])
 
 
+@router.get("", response_model=list[GlobalBookSearchResult], include_in_schema=False)
 @router.get("/", response_model=list[GlobalBookSearchResult])
 async def search_books(
     db: DBSession,
@@ -109,6 +110,12 @@ async def get_book(
     return GlobalBookResponse.model_validate(book)
 
 
+@router.post(
+    "",
+    response_model=GlobalBookResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+)
 @router.post(
     "/",
     response_model=GlobalBookResponse,

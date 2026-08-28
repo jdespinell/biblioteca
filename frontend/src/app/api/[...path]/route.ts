@@ -4,6 +4,15 @@ const BACKEND_URL = (
   process.env.INTERNAL_API_URL || "http://backend:8000/api"
 ).replace(/\/$/, "");
 
+const HOP_BY_HOP_HEADERS = new Set([
+  "host",
+  "connection",
+  "transfer-encoding",
+  "content-length",
+  "content-encoding",
+  "keep-alive",
+]);
+
 async function handler(
   req: NextRequest,
   { params }: { params: { path: string[] } }
@@ -14,8 +23,7 @@ async function handler(
 
   const headers = new Headers();
   req.headers.forEach((val, key) => {
-    // Exclude host and content-length (let fetch calculate content-length)
-    if (!["host", "content-length"].includes(key.toLowerCase())) {
+    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
       headers.set(key, val);
     }
   });
@@ -30,12 +38,14 @@ async function handler(
       method: req.method,
       headers,
       body,
-      redirect: "manual",
+      redirect: "follow",
     });
 
     const resHeaders = new Headers();
     backendRes.headers.forEach((val, key) => {
-      resHeaders.append(key, val);
+      if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+        resHeaders.append(key, val);
+      }
     });
 
     const resBody = await backendRes.arrayBuffer();
@@ -46,9 +56,9 @@ async function handler(
       headers: resHeaders,
     });
   } catch (err) {
-    console.error(`[API Proxy Error] Failed to proxy ${req.method} ${targetUrl}:`, err);
+    console.error(`[API Proxy Error] ${req.method} ${targetUrl}:`, err);
     return NextResponse.json(
-      { detail: `Error al conectar con el backend (${targetUrl})` },
+      { detail: `Error de conexión con el backend: ${String(err)}` },
       { status: 502 }
     );
   }

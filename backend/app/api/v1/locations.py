@@ -13,6 +13,7 @@ from app.schemas.location import LocationCreate, LocationResponse, LocationUpdat
 router = APIRouter(prefix="/locations", tags=["locations"])
 
 
+@router.get("", response_model=list[LocationResponse], include_in_schema=False)
 @router.get("/", response_model=list[LocationResponse])
 async def list_locations(
     current_user: CurrentUser,
@@ -41,6 +42,7 @@ async def list_locations(
     ]
 
 
+@router.post("", response_model=LocationResponse, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 @router.post("/", response_model=LocationResponse, status_code=status.HTTP_201_CREATED)
 async def create_location(
     body: LocationCreate,
