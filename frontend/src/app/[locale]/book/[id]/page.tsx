@@ -21,6 +21,7 @@ import {
   Edit3,
   Check,
   X,
+  FileText,
 } from "lucide-react";
 import { booksApi } from "@/lib/api/books";
 import { aiApi } from "@/lib/api/ai";
@@ -51,35 +52,43 @@ export default function BookPage({ params }: BookPageProps) {
 
   const [tagInput, setTagInput] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
-  const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
 
-  // Synopsis / Summary editing state
+  // Synopsis / Summary editing state (Personal to the user's UserBook)
   const [isEditingSummary, setIsEditingSummary] = useState(false);
   const [summaryText, setSummaryText] = useState("");
   const [isSavingSummary, setIsSavingSummary] = useState(false);
 
   // 1. Global book details
-  const { data: book, isLoading: bookLoading, mutate: mutateBook } = useSWR(
+  const { data: book, isLoading: bookLoading } = useSWR(
     ["book", id],
     () => booksApi.getById(id)
   );
 
+  // 2. User books list to find this user's copy
+  const { data: userBooks, mutate: mutateUserBooks } = useSWR(
+    isAuthenticated ? ["user-books-all"] : null,
+    () => userBooksApi.list({ limit: 100 })
+  );
+
+  const userBook: UserBook | undefined = userBooks?.find(
+    (ub) => ub.global_book.id === id
+  );
+
   const handleStartEditSummary = () => {
-    setSummaryText(book?.description ?? aiSummary ?? "");
+    setSummaryText(userBook?.summary ?? "");
     setIsEditingSummary(true);
   };
 
   const handleSaveSummary = async () => {
-    if (!book) return;
+    if (!userBook) return;
     setIsSavingSummary(true);
     try {
-      const updated = await booksApi.update(id, { description: summaryText.trim() });
-      await mutateBook(updated, false);
-      setAiSummary(null);
+      await userBooksApi.update(userBook.id, { summary: summaryText.trim() });
+      await mutateUserBooks();
       setIsEditingSummary(false);
     } catch (e) {
-      console.error("Error saving summary:", e);
+      console.error("Error saving personal summary:", e);
     } finally {
       setIsSavingSummary(false);
     }
@@ -92,7 +101,6 @@ export default function BookPage({ params }: BookPageProps) {
       const res = await aiApi.summarizeBook(book.title, book.author);
       if (res?.summary) {
         setSummaryText(res.summary);
-        setAiSummary(res.summary);
         if (!isEditingSummary) {
           setIsEditingSummary(true);
         }
@@ -103,16 +111,6 @@ export default function BookPage({ params }: BookPageProps) {
       setIsSummarizing(false);
     }
   };
-
-  // 2. User books list to find this user's copy
-  const { data: userBooks, mutate: mutateUserBooks } = useSWR(
-    isAuthenticated ? ["user-books-all"] : null,
-    () => userBooksApi.list({ limit: 100 })
-  );
-
-  const userBook: UserBook | undefined = userBooks?.find(
-    (ub) => ub.global_book.id === id
-  );
 
   // 3. User's personal note
   const { data: myNote, mutate: mutateNote } = useSWR<BookNote | null>(
@@ -143,25 +141,27 @@ export default function BookPage({ params }: BookPageProps) {
     await mutateUserBooks();
   };
 
-  const handleRatingChange = async (newRating: number) => {
+  const handleLocationChange = async (locationId: string) => {
     if (!userBook) return;
-    const finalRating = userBook.rating === newRating ? null : newRating;
-    await userBooksApi.update(userBook.id, { rating: finalRating ?? undefined });
+    await userBooksApi.update(userBook.id, {
+      location_id: locationId || null,
+    });
     await mutateUserBooks();
   };
 
-  const handleLocationChange = async (locId: string) => {
+  const handleRatingChange = async (rating: number) => {
     if (!userBook) return;
-    await userBooksApi.update(userBook.id, { location_id: locId || null });
+    const newRating = userBook.rating === rating ? null : rating;
+    await userBooksApi.update(userBook.id, { rating: newRating });
     await mutateUserBooks();
   };
 
   const handleAddTag = async () => {
     if (!userBook || !tagInput.trim()) return;
-    const cleanTag = tagInput.trim().toLowerCase();
-    if (!userBook.tags.includes(cleanTag)) {
-      const newTags = [...userBook.tags, cleanTag];
-      await userBooksApi.update(userBook.id, { tags: newTags });
+    const tag = tagInput.trim().toLowerCase();
+    if (!userBook.tags.includes(tag)) {
+      const updatedTags = [...userBook.tags, tag];
+      await userBooksApi.update(userBook.id, { tags: updatedTags });
       await mutateUserBooks();
     }
     setTagInput("");
@@ -169,12 +169,16 @@ export default function BookPage({ params }: BookPageProps) {
 
   const handleRemoveTag = async (tagToRemove: string) => {
     if (!userBook) return;
-    const newTags = userBook.tags.filter((t) => t !== tagToRemove);
-    await userBooksApi.update(userBook.id, { tags: newTags });
+    const updatedTags = userBook.tags.filter((t) => t !== tagToRemove);
+    await userBooksApi.update(userBook.id, { tags: updatedTags });
     await mutateUserBooks();
   };
 
   const handleAddBookToLibrary = async () => {
+    if (!isAuthenticated) {
+      window.location.href = `/${locale}/auth/login`;
+      return;
+    }
     if (!book) return;
     setIsUpdating(true);
     try {
@@ -190,40 +194,35 @@ export default function BookPage({ params }: BookPageProps) {
 
   if (bookLoading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
       </div>
     );
   }
 
   if (!book) {
     return (
-      <div className="text-center py-20 bg-white rounded-2xl border border-gray-100 max-w-md mx-auto p-8 space-y-4">
-        <BookOpen className="h-12 w-12 text-gray-300 mx-auto" />
-        <h2 className="text-xl font-bold text-gray-900">Libro no encontrado</h2>
-        <p className="text-sm text-gray-500">
-          El libro solicitado no existe o fue eliminado del catálogo.
-        </p>
+      <div className="text-center py-20 bg-white rounded-2xl border border-gray-100 p-8">
+        <p className="text-gray-500 mb-4">Libro no encontrado</p>
         <Link
           href={`/${locale}/library`}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 text-white font-medium rounded-xl text-sm hover:bg-primary-700 transition"
+          className="text-primary-600 font-medium hover:underline inline-flex items-center gap-1"
         >
-          <ArrowLeft className="h-4 w-4" />
-          Volver a Mi Biblioteca
+          <ArrowLeft className="h-4 w-4" /> Volver a la biblioteca
         </Link>
       </div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-12">
+    <div className="max-w-4xl mx-auto space-y-8 pb-16">
       {/* Back button */}
       <div>
         <Link
           href={`/${locale}/library`}
-          className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-primary-600 transition-colors font-medium"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-900 bg-white border border-gray-200 px-3 py-1.5 rounded-xl transition shadow-xs"
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-3.5 w-3.5" />
           Volver a Mi Biblioteca
         </Link>
       </div>
@@ -286,116 +285,9 @@ export default function BookPage({ params }: BookPageProps) {
             )}
           </div>
 
-          {/* Description & AI Summary (View / Edit Mode) */}
-          <div className="space-y-3 pt-2">
-            <div className="flex items-center justify-between">
-              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                Sinopsis / Resumen
-              </label>
-
-              {!isEditingSummary && (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleStartEditSummary}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-primary-600 px-2.5 py-1 rounded-lg hover:bg-gray-100 transition"
-                  >
-                    <Edit3 className="h-3.5 w-3.5" />
-                    Editar resumen
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleGenerateSummary}
-                    disabled={isSummarizing}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700 px-2.5 py-1 rounded-lg bg-primary-50 hover:bg-primary-100 transition disabled:opacity-50"
-                  >
-                    {isSummarizing ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-3.5 w-3.5 text-primary-600" />
-                    )}
-                    {book.description ? "Regenerar con IA" : "Generar con IA"}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {isEditingSummary ? (
-              <div className="space-y-3 bg-gray-50/80 p-4 rounded-xl border border-primary-200 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-gray-700">
-                    Editando sinopsis del libro:
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleGenerateSummary}
-                    disabled={isSummarizing}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 bg-white border border-primary-200 px-2.5 py-1 rounded-lg hover:bg-primary-50 transition shadow-xs disabled:opacity-50"
-                  >
-                    {isSummarizing ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-3.5 w-3.5 text-primary-600" />
-                    )}
-                    Rellenar con IA
-                  </button>
-                </div>
-
-                <textarea
-                  rows={5}
-                  value={summaryText}
-                  onChange={(e) => setSummaryText(e.target.value)}
-                  placeholder="Escribe o genera la sinopsis y temas principales de este libro..."
-                  className="w-full p-3 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white leading-relaxed resize-y"
-                  autoFocus
-                />
-
-                <div className="flex items-center justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsEditingSummary(false);
-                      setSummaryText("");
-                    }}
-                    disabled={isSavingSummary}
-                    className="px-3.5 py-1.5 border border-gray-300 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-100 transition"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSaveSummary}
-                    disabled={isSavingSummary}
-                    className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary-600 text-white text-xs font-semibold rounded-lg hover:bg-primary-700 transition shadow-sm disabled:opacity-50"
-                  >
-                    {isSavingSummary ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Check className="h-3.5 w-3.5" />
-                    )}
-                    Guardar resumen
-                  </button>
-                </div>
-              </div>
-            ) : book.description || aiSummary ? (
-              <BookSummaryViewer content={aiSummary || book.description || ""} />
-            ) : (
-              <div className="text-xs text-gray-400 italic bg-gray-50/50 p-4 rounded-xl border border-dashed border-gray-200 flex items-center justify-between">
-                <span>Sin sinopsis registrada. Puedes redactarla tú mismo o generarla con IA.</span>
-                <button
-                  type="button"
-                  onClick={handleStartEditSummary}
-                  className="text-primary-600 hover:underline font-medium ml-2 flex-shrink-0"
-                >
-                  + Escribir sinopsis
-                </button>
-              </div>
-            )}
-          </div>
-
           {/* User's copy management */}
           {userBook ? (
-            <div className="pt-5 border-t border-gray-100 space-y-4">
+            <div className="pt-5 border-t border-gray-100 space-y-5">
               {/* Status */}
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
@@ -439,7 +331,7 @@ export default function BookPage({ params }: BookPageProps) {
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                   {/* Rating */}
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
@@ -491,8 +383,118 @@ export default function BookPage({ params }: BookPageProps) {
                 </div>
               )}
 
+              {/* ── Personal Private Summary / Synopsis Section ── */}
+              <div className="space-y-3 pt-3 border-t border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Lock className="h-3.5 w-3.5 text-gray-400" />
+                    <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Mi Sinopsis / Resumen Personal (Privado)
+                    </label>
+                  </div>
+
+                  {!isEditingSummary && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleStartEditSummary}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-primary-600 px-2.5 py-1 rounded-lg hover:bg-gray-100 transition"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                        Editar mi resumen
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleGenerateSummary}
+                        disabled={isSummarizing}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700 px-2.5 py-1 rounded-lg bg-primary-50 hover:bg-primary-100 transition disabled:opacity-50"
+                      >
+                        {isSummarizing ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5 text-primary-600" />
+                        )}
+                        {userBook.summary ? "Regenerar con IA" : "Generar con IA"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {isEditingSummary ? (
+                  <div className="space-y-3 bg-gray-50/80 p-4 rounded-xl border border-primary-200 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-gray-700">
+                        Escribe o edita tu sinopsis personal:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleGenerateSummary}
+                        disabled={isSummarizing}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 bg-white border border-primary-200 px-2.5 py-1 rounded-lg hover:bg-primary-50 transition shadow-xs disabled:opacity-50"
+                      >
+                        {isSummarizing ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5 text-primary-600" />
+                        )}
+                        Rellenar con IA
+                      </button>
+                    </div>
+
+                    <textarea
+                      rows={5}
+                      value={summaryText}
+                      onChange={(e) => setSummaryText(e.target.value)}
+                      placeholder="Escribe tu resumen personal, temas clave o apuntes de este libro..."
+                      className="w-full p-3 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white leading-relaxed resize-y"
+                      autoFocus
+                    />
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingSummary(false);
+                          setSummaryText("");
+                        }}
+                        disabled={isSavingSummary}
+                        className="px-3.5 py-1.5 border border-gray-300 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-100 transition"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveSummary}
+                        disabled={isSavingSummary}
+                        className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary-600 text-white text-xs font-semibold rounded-lg hover:bg-primary-700 transition shadow-sm disabled:opacity-50"
+                      >
+                        {isSavingSummary ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Check className="h-3.5 w-3.5" />
+                        )}
+                        Guardar mi resumen
+                      </button>
+                    </div>
+                  </div>
+                ) : userBook.summary ? (
+                  <BookSummaryViewer content={userBook.summary} />
+                ) : (
+                  <div className="text-xs text-gray-400 italic bg-gray-50/50 p-4 rounded-xl border border-dashed border-gray-200 flex items-center justify-between">
+                    <span>Aún no tienes un resumen para este libro. Puedes escribirlo o generarlo con IA.</span>
+                    <button
+                      type="button"
+                      onClick={handleStartEditSummary}
+                      className="text-primary-600 hover:underline font-medium ml-2 flex-shrink-0"
+                    >
+                      + Crear resumen
+                    </button>
+                  </div>
+                )}
+              </div>
+
               {/* Tags */}
-              <div className="pt-2">
+              <div className="pt-2 border-t border-gray-100">
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">
                   Etiquetas
                 </label>
@@ -548,11 +550,11 @@ export default function BookPage({ params }: BookPageProps) {
         </div>
       </div>
 
-      {/* Markdown Notes Editor */}
+      {/* Markdown Notes Editor (Only for the book's owner) */}
       {userBook && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8 space-y-4">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">Mis Notas y Resumen</h2>
+            <h2 className="text-xl font-bold text-gray-900">Mis Notas del Libro</h2>
             <p className="text-xs text-gray-500 mt-0.5">
               Tus notas admiten formato Markdown, fórmulas matemáticas KaTeX ($\LaTeX$) y guardado automático.
             </p>

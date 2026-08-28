@@ -61,6 +61,7 @@ def _serialize_user_book(ub: UserBook) -> UserBookResponse:
         global_book=GlobalBookResponse.model_validate(ub.global_book),
         status=ub.status,
         rating=ub.rating,
+        summary=ub.summary,
         location=LocationBrief.model_validate(ub.location) if ub.location else None,
         tags=[bt.tag for bt in ub.tags],
         attachments=[AttachmentResponse.model_validate(a) for a in ub.attachments],
@@ -179,6 +180,7 @@ async def create_user_book(
         status=body.status,
         location_id=body.location_id,
         rating=body.rating,
+        summary=body.summary,
     )
     db.add(user_book)
 
@@ -228,6 +230,8 @@ async def update_user_book(
         ub.location_id = body.location_id
     if body.rating is not None:
         ub.rating = body.rating
+    if body.summary is not None:
+        ub.summary = body.summary
 
     if body.tags is not None:
         # Replace all tags atomically

@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -71,6 +72,7 @@ class UserBook(Base):
     )
 
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1-5 stars
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)  # User's personal summary
 
     added_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

@@ -35,7 +35,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         async with engine.begin() as conn:
             await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
-        logger.info("✅ Database connection established")
+            await conn.execute(__import__("sqlalchemy").text("ALTER TABLE user_books ADD COLUMN IF NOT EXISTS summary TEXT;"))
+        logger.info("✅ Database connection established and user_books.summary ensured")
     except Exception as e:
         logger.error("❌ Database connection failed: %s", e)
         raise

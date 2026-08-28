@@ -8,6 +8,7 @@ export interface UserBook {
   global_book: GlobalBook;
   status: BookStatus;
   rating: number | null;
+  summary?: string | null;
   location: { id: string; name: string } | null;
   tags: string[];
   attachments: Attachment[];
@@ -36,6 +37,7 @@ export interface UserBookCreate {
   status?: BookStatus;
   location_id?: string;
   rating?: number;
+  summary?: string;
   tags?: string[];
 }
 
@@ -43,6 +45,7 @@ export interface UserBookUpdate {
   status?: BookStatus;
   location_id?: string | null;
   rating?: number | null;
+  summary?: string | null;
   tags?: string[];
 }
 

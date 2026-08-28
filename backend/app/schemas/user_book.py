@@ -35,6 +35,7 @@ class UserBookCreate(BaseModel):
     status: Literal["unread", "reading", "read", "wishlist"] = "unread"
     location_id: uuid.UUID | None = None
     rating: int | None = Field(default=None, ge=1, le=5)
+    summary: str | None = None
     tags: list[str] = Field(default_factory=list, max_length=20)
 
 
@@ -42,6 +43,7 @@ class UserBookUpdate(BaseModel):
     status: Literal["unread", "reading", "read", "wishlist"] | None = None
     location_id: uuid.UUID | None = None
     rating: int | None = Field(default=None, ge=1, le=5)
+    summary: str | None = None
     tags: list[str] | None = None
 
 
@@ -58,6 +60,7 @@ class UserBookResponse(BaseModel):
     global_book: GlobalBookResponse
     status: str
     rating: int | None
+    summary: str | None = None
     location: LocationBrief | None
     tags: list[str]
     attachments: list[AttachmentResponse]
