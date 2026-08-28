@@ -23,7 +23,8 @@ async function handler(
 
   const headers = new Headers();
   req.headers.forEach((val, key) => {
-    if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) {
+    const lowerKey = key.toLowerCase();
+    if (!HOP_BY_HOP_HEADERS.has(lowerKey)) {
       headers.set(key, val);
     }
   });
@@ -49,27 +50,25 @@ async function handler(
       }
     });
 
-    const resBody = await backendRes.arrayBuffer();
+    // Handle 204 No Content or 304 Not Modified (cannot have body in NextResponse)
+    if (backendRes.status === 204 || backendRes.status === 304) {
+      const emptyRes = new NextResponse(null, {
+        status: backendRes.status,
+        statusText: backendRes.statusText,
+        headers: resHeaders,
+      });
+      forwardCookies(backendRes, emptyRes);
+      return emptyRes;
+    }
 
+    const resBody = await backendRes.arrayBuffer();
     const response = new NextResponse(resBody, {
       status: backendRes.status,
       statusText: backendRes.statusText,
       headers: resHeaders,
     });
 
-    // Forward each Set-Cookie header individually to prevent comma-concatenation bugs
-    if (typeof backendRes.headers.getSetCookie === "function") {
-      const cookies = backendRes.headers.getSetCookie();
-      for (const cookie of cookies) {
-        response.headers.append("set-cookie", cookie);
-      }
-    } else {
-      const rawCookie = backendRes.headers.get("set-cookie");
-      if (rawCookie) {
-        response.headers.set("set-cookie", rawCookie);
-      }
-    }
-
+    forwardCookies(backendRes, response);
     return response;
   } catch (err) {
     console.error(`[API Proxy Error] ${req.method} ${targetUrl}:`, err);
@@ -77,6 +76,20 @@ async function handler(
       { detail: `Error de conexión con el backend: ${String(err)}` },
       { status: 502 }
     );
+  }
+}
+
+function forwardCookies(backendRes: Response, clientRes: NextResponse) {
+  if (typeof backendRes.headers.getSetCookie === "function") {
+    const cookies = backendRes.headers.getSetCookie();
+    for (const cookie of cookies) {
+      clientRes.headers.append("set-cookie", cookie);
+    }
+  } else {
+    const rawCookie = backendRes.headers.get("set-cookie");
+    if (rawCookie) {
+      clientRes.headers.set("set-cookie", rawCookie);
+    }
   }
 }
 

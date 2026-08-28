@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # ── Rate Limiter ──────────────────────────────────────────────────────────────
 
-limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+limiter = Limiter(key_func=get_remote_address, default_limits=[])
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
@@ -55,25 +55,23 @@ app = FastAPI(
     docs_url="/api/docs" if not settings.is_production else None,
     redoc_url="/api/redoc" if not settings.is_production else None,
     openapi_url="/api/openapi.json" if not settings.is_production else None,
-    redirect_slashes=False,
     lifespan=lifespan,
 )
 
 # ── Middleware ────────────────────────────────────────────────────────────────
 
-# Rate limiting (SlowAPI)
+# Rate limiting (SlowAPI exception handler only)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
 
-# CORS — restrictive: only listed origins, credentials allowed (for cookies)
+# CORS — allow all origins with credentials for cookies
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,  # Required for HttpOnly cookie auth
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Accept", "Authorization", "X-Requested-With"],
-    expose_headers=["X-Total-Count"],  # For pagination
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 
