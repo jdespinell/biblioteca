@@ -64,3 +64,15 @@ async def scan_isbn(
     # Delegate to the books endpoint logic (reuse isbn lookup)
     from app.services.isbn_service import lookup_isbn
     return await lookup_isbn(isbn.strip())
+
+
+@router.post("/summarize", response_model=BookSummarizeResponse)
+async def summarize_book(
+    body: BookSummarizeRequest,
+    current_user: CurrentUser,
+) -> BookSummarizeResponse:
+    """
+    Generate an AI synopsis and key themes summary for a book using Gemini.
+    """
+    summary = await gemini_service.summarize_book(body.title, body.author)
+    return BookSummarizeResponse(summary=summary)

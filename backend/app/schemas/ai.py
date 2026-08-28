@@ -34,3 +34,12 @@ class ISBNLookupResponse(BaseModel):
     page_count: int | None = None
     source: str = "openlibrary"
     found: bool = False
+
+
+class BookSummarizeRequest(BaseModel):
+    title: str
+    author: str
+
+
+class BookSummarizeResponse(BaseModel):
+    summary: str

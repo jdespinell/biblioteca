@@ -91,3 +91,25 @@ async def recognize_cover(
     except Exception as e:
         logger.error("Gemini API error during cover recognition: %s", e)
         return CoverRecognitionResponse(confidence=0.0)
+
+
+async def summarize_book(title: str, author: str) -> str:
+    """
+    Generate a concise synopsis and summary in Spanish for a given book using Gemini.
+    """
+    if not settings.GEMINI_API_KEY:
+        return ""
+
+    prompt = f"""Genera una sinopsis y resumen conciso en español del libro "{title}" del autor "{author}".
+Estructura la respuesta de forma clara y atractiva para un lector:
+- **Sinopsis** (2-3 oraciones que expliquen la trama o idea central).
+- **Temas principales** (puntos clave o reflexiones importantes).
+Sé elocuente y no agregues introducciones innecesarias."""
+
+    try:
+        model = genai.GenerativeModel(model_name=_GEMINI_MODEL)
+        response = await model.generate_content_async(prompt)
+        return response.text.strip()
+    except Exception as e:
+        logger.error("Gemini API error during summarization: %s", e)
+        return ""

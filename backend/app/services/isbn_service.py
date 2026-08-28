@@ -200,6 +200,9 @@ async def search_external_books(query: str, limit: int = 10) -> list[dict]:
                     languages = doc.get("language", ["es"])
                     lang = languages[0] if languages else "es"
 
+                    first_sent = doc.get("first_sentence")
+                    desc = first_sent[0] if isinstance(first_sent, list) and first_sent else (first_sent if isinstance(first_sent, str) else None)
+
                     results.append({
                         "title": title,
                         "author": author_str,
@@ -209,7 +212,7 @@ async def search_external_books(query: str, limit: int = 10) -> list[dict]:
                         "published_year": year,
                         "page_count": doc.get("number_of_pages_median"),
                         "language": lang,
-                        "description": None,
+                        "description": desc,
                         "cover_url": cover_url,
                         "source": "openlibrary",
                     })

@@ -60,7 +60,9 @@ class GlobalBookSearchResult(BaseModel):
     isbn: str | None
     title: str
     author: str
+    publisher: str | None = None
     cover_url: str | None
     published_year: int | None
+    description: str | None = None
 
     model_config = {"from_attributes": True}

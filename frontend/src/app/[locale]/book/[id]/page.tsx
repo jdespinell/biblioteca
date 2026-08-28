@@ -17,8 +17,10 @@ import {
   Lock,
   Layers,
   Calendar,
+  Sparkles,
 } from "lucide-react";
 import { booksApi } from "@/lib/api/books";
+import { aiApi } from "@/lib/api/ai";
 import { userBooksApi, type UserBook, type BookStatus } from "@/lib/api/user-books";
 import { notesApi, socialApi, type BookNote, type PublicNote } from "@/lib/api/notes";
 import { locationsApi, type Location } from "@/lib/api/locations";
@@ -67,12 +69,29 @@ export default function BookPage({ params }: BookPageProps) {
 
   const [tagInput, setTagInput] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
 
   // 1. Global book details
   const { data: book, isLoading: bookLoading } = useSWR(
     ["book", id],
     () => booksApi.getById(id)
   );
+
+  const handleGenerateSummary = async () => {
+    if (!book) return;
+    setIsSummarizing(true);
+    try {
+      const res = await aiApi.summarizeBook(book.title, book.author);
+      if (res?.summary) {
+        setAiSummary(res.summary);
+      }
+    } catch (e) {
+      console.error("AI summary error:", e);
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
 
   // 2. User books list to find this user's copy
   const { data: userBooks, mutate: mutateUserBooks } = useSWR(
@@ -256,11 +275,30 @@ export default function BookPage({ params }: BookPageProps) {
             )}
           </div>
 
-          {book.description && (
-            <p className="text-sm text-gray-600 leading-relaxed bg-gray-50/50 p-4 rounded-xl border border-gray-100">
-              {book.description}
-            </p>
-          )}
+          {/* Description & AI Summary */}
+          <div className="space-y-3">
+            {book.description || aiSummary ? (
+              <div className="text-sm text-gray-700 leading-relaxed bg-gray-50/70 p-4 rounded-xl border border-gray-100 whitespace-pre-wrap">
+                {aiSummary || book.description}
+              </div>
+            ) : null}
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleGenerateSummary}
+                disabled={isSummarizing}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 text-primary-700 rounded-lg text-xs font-medium hover:bg-primary-100 transition disabled:opacity-50"
+              >
+                {isSummarizing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5 text-primary-600" />
+                )}
+                {book.description ? "✨ Mejorar / Ampliar resumen con IA" : "✨ Generar sinopsis con IA"}
+              </button>
+            </div>
+          </div>
 
           {/* User's copy management */}
           {userBook ? (

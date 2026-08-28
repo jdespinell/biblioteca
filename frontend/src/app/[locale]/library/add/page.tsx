@@ -14,6 +14,7 @@ import {
   BookOpen,
   MapPin,
   X,
+  Sparkles,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -21,6 +22,7 @@ import dynamic from "next/dynamic";
 import { booksApi, type GlobalBook, type ISBNLookupResult, type GlobalBookCreate } from "@/lib/api/books";
 import { userBooksApi } from "@/lib/api/user-books";
 import { locationsApi, type Location } from "@/lib/api/locations";
+import { aiApi } from "@/lib/api/ai";
 import useSWR from "swr";
 
 const BarcodeScanner = dynamic(
@@ -52,6 +54,9 @@ export default function AddBookPage() {
   const [tagInput, setTagInput] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // AI Summary State
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
 
   // Quick Location Creation Modal State
   const [showLocModal, setShowLocModal] = useState(false);
@@ -88,6 +93,28 @@ export default function AddBookPage() {
       console.error("Error creating location:", err);
     } finally {
       setIsCreatingLoc(false);
+    }
+  };
+
+  const handleGenerateAISummary = async (title: string, author: string) => {
+    if (!title.trim()) return;
+    setIsGeneratingSummary(true);
+    try {
+      const res = await aiApi.summarizeBook(title, author || "Autor desconocido");
+      if (res?.summary) {
+        if (step === "manual") {
+          setManualDescription(res.summary);
+        } else if (selectedBook) {
+          setSelectedBook({
+            ...selectedBook,
+            description: res.summary,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Error generating summary:", err);
+    } finally {
+      setIsGeneratingSummary(false);
     }
   };
 
@@ -258,7 +285,7 @@ export default function AddBookPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Ej: Cien años de soledad o 9780307474728"
+                  placeholder="Ej: Cien años de soledad o Gabriel García Márquez"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -313,16 +340,16 @@ export default function AddBookPage() {
           {searchResults.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
               <div className="p-4 border-b border-gray-100">
-                <h2 className="font-semibold text-gray-800">Resultados ({searchResults.length})</h2>
+                <h2 className="font-semibold text-gray-800">Resultados encontrados ({searchResults.length})</h2>
               </div>
               <div className="divide-y divide-gray-50">
                 {searchResults.map((book) => (
                   <button
                     key={book.id}
                     onClick={() => handleSelectBook(book)}
-                    className="w-full flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors text-left"
+                    className="w-full flex items-start gap-4 p-4 hover:bg-gray-50 transition-colors text-left"
                   >
-                    <div className="relative w-12 h-16 bg-gray-100 rounded flex-shrink-0 overflow-hidden">
+                    <div className="relative w-12 h-16 bg-gray-100 rounded flex-shrink-0 overflow-hidden shadow-sm mt-0.5">
                       {book.cover_url ? (
                         <Image src={book.cover_url} alt={book.title} fill className="object-cover" sizes="48px" />
                       ) : (
@@ -333,14 +360,14 @@ export default function AddBookPage() {
                         </div>
                       )}
                     </div>
-                    <div className="min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{book.title}</p>
-                      <p className="text-sm text-gray-500 truncate">{book.author}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-gray-900 leading-tight">{book.title}</p>
+                      <p className="text-sm text-gray-600 mt-0.5">{book.author}</p>
                       {book.published_year && (
-                        <p className="text-xs text-gray-400">{book.published_year}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">Año: {book.published_year}</p>
                       )}
                     </div>
-                    <Plus className="h-4 w-4 text-primary-500 ml-auto flex-shrink-0" />
+                    <Plus className="h-4 w-4 text-primary-500 ml-auto flex-shrink-0 mt-1" />
                   </button>
                 ))}
               </div>
@@ -464,10 +491,27 @@ export default function AddBookPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Descripción / Sinopsis (opcional)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-gray-700">
+                  Descripción / Sinopsis
+                </label>
+                <button
+                  type="button"
+                  onClick={() => handleGenerateAISummary(manualTitle, manualAuthor)}
+                  disabled={isGeneratingSummary || !manualTitle.trim()}
+                  className="text-xs font-medium text-primary-600 hover:text-primary-700 flex items-center gap-1 disabled:opacity-40"
+                >
+                  {isGeneratingSummary ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5 text-primary-600" />
+                  )}
+                  Generar resumen con IA
+                </button>
+              </div>
               <textarea
                 rows={3}
-                placeholder="Breve resumen del libro..."
+                placeholder="Breve sinopsis o argumento del libro..."
                 value={manualDescription}
                 onChange={(e) => setManualDescription(e.target.value)}
                 className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
@@ -503,7 +547,7 @@ export default function AddBookPage() {
 
           {/* Book preview */}
           <div className="flex gap-4">
-            <div className="relative w-20 h-28 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+            <div className="relative w-20 h-28 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
               {selectedBook.cover_url ? (
                 <Image src={selectedBook.cover_url} alt={selectedBook.title ?? ""} fill className="object-cover" sizes="80px" />
               ) : (
@@ -512,11 +556,11 @@ export default function AddBookPage() {
                 </div>
               )}
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h2 className="text-lg font-bold text-gray-900 leading-tight">
                 {selectedBook.title ?? "Título desconocido"}
               </h2>
-              <p className="text-gray-600 mt-1">{selectedBook.author}</p>
+              <p className="text-gray-600 mt-1 font-medium">{selectedBook.author}</p>
               {selectedBook.publisher && (
                 <p className="text-sm text-gray-400 mt-0.5">{selectedBook.publisher}</p>
               )}
@@ -524,6 +568,37 @@ export default function AddBookPage() {
                 <p className="text-xs font-mono text-gray-400 mt-1">ISBN: {selectedBook.isbn}</p>
               )}
             </div>
+          </div>
+
+          {/* Synopsis / Summary */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Sinopsis / Resumen
+              </label>
+              <button
+                type="button"
+                onClick={() => handleGenerateAISummary(selectedBook.title ?? "", selectedBook.author ?? "")}
+                disabled={isGeneratingSummary}
+                className="text-xs font-medium text-primary-600 hover:text-primary-700 flex items-center gap-1 disabled:opacity-40"
+              >
+                {isGeneratingSummary ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5 text-primary-600" />
+                )}
+                {selectedBook.description ? "Regenerar con IA" : "Generar con IA"}
+              </button>
+            </div>
+            {selectedBook.description ? (
+              <p className="text-sm text-gray-700 leading-relaxed bg-gray-50/70 p-3.5 rounded-xl border border-gray-100 whitespace-pre-wrap">
+                {selectedBook.description}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 italic bg-gray-50/50 p-3 rounded-lg border border-dashed border-gray-200">
+                Sin sinopsis disponible. Haz clic en &quot;Generar con IA&quot; para crear una automáticamente.
+              </p>
+            )}
           </div>
 
           {/* Status */}
