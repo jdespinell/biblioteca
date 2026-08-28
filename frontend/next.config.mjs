@@ -32,10 +32,11 @@ const nextConfig = {
   },
 
   async rewrites() {
+    const apiTarget = (process.env.INTERNAL_API_URL || "http://backend:8000/api").replace(/\/$/, "");
     return [
       {
         source: "/api/:path*",
-        destination: process.env.INTERNAL_API_URL || "http://backend:8000/api/:path*",
+        destination: `${apiTarget}/:path*`,
       },
     ];
   },
