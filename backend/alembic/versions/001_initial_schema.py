@@ -17,22 +17,28 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # ── ENUMS ─────────────────────────────────────────────────────────────────
-    book_source = postgresql.ENUM(
-        "manual", "openlibrary", "googlebooks", "ai",
-        name="book_source_enum",
-    )
-    book_status = postgresql.ENUM(
-        "unread", "reading", "read", "wishlist",
-        name="book_status_enum",
-    )
-    attachment_type = postgresql.ENUM(
-        "pdf", "image",
-        name="attachment_type_enum",
-    )
-    book_source.create(op.get_bind(), checkfirst=True)
-    book_status.create(op.get_bind(), checkfirst=True)
-    attachment_type.create(op.get_bind(), checkfirst=True)
+    # ── ENUMS (Idempotent creation) ───────────────────────────────────────────
+    op.execute("""
+    DO $$ BEGIN
+        CREATE TYPE book_source_enum AS ENUM ('manual', 'openlibrary', 'googlebooks', 'ai');
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END $$;
+    """)
+    op.execute("""
+    DO $$ BEGIN
+        CREATE TYPE book_status_enum AS ENUM ('unread', 'reading', 'read', 'wishlist');
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END $$;
+    """)
+    op.execute("""
+    DO $$ BEGIN
+        CREATE TYPE attachment_type_enum AS ENUM ('pdf', 'image');
+    EXCEPTION
+        WHEN duplicate_object THEN null;
+    END $$;
+    """)
 
     # ── users ─────────────────────────────────────────────────────────────────
     op.create_table(
