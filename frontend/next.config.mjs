@@ -31,6 +31,15 @@ const nextConfig = {
     formats: ["image/avif", "image/webp"],
   },
 
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: process.env.INTERNAL_API_URL || "http://backend:8000/api/:path*",
+      },
+    ];
+  },
+
   async headers() {
     return [
       {

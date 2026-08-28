@@ -129,10 +129,8 @@ services:
     env_file:
       - .env
     environment:
-      # El navegador del cliente accede al backend a través del NPM.
-      # Cambia SERVER_IP por la IP o dominio de tu servidor.
-      # Si ya tienes dominio configurado en NPM usa: https://biblioteca.tudominio.com/api
-      NEXT_PUBLIC_API_URL: http://${SERVER_IP:-localhost}:8002/api
+      NEXT_PUBLIC_API_URL: /api
+      INTERNAL_API_URL: http://backend:8000/api
     volumes:
       - ./frontend:/app
       - /app/node_modules
