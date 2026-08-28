@@ -62,4 +62,7 @@ export const booksApi = {
 
   create: (data: GlobalBookCreate) =>
     api.post<GlobalBook>("/v1/books/", data),
+
+  update: (bookId: string, data: Partial<GlobalBookCreate>) =>
+    api.patch<GlobalBook>(`/v1/books/${bookId}`, data),
 };

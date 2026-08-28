@@ -195,6 +195,9 @@ async def create_book(
         existing = await db.execute(select(GlobalBook).where(or_(*conditions)))
         existing_book = existing.scalar_one_or_none()
         if existing_book:
+            if body.description and (not existing_book.description or len(body.description) > len(existing_book.description)):
+                existing_book.description = body.description
+                db.add(existing_book)
             return GlobalBookResponse.model_validate(existing_book)
 
     book = GlobalBook(**body.model_dump())

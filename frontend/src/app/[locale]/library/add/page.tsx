@@ -228,6 +228,13 @@ export default function AddBookPage() {
 
       if ("id" in selectedBook && selectedBook.id) {
         bookId = selectedBook.id;
+        if (selectedBook.description) {
+          try {
+            await booksApi.update(bookId, { description: selectedBook.description });
+          } catch (err) {
+            console.warn("Could not update global book description:", err);
+          }
+        }
       } else {
         const bookData = selectedBook as GlobalBookCreate;
         const created = await booksApi.create({

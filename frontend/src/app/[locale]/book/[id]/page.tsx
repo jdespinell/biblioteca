@@ -18,6 +18,9 @@ import {
   Layers,
   Calendar,
   Sparkles,
+  Edit3,
+  Check,
+  X,
 } from "lucide-react";
 import { booksApi } from "@/lib/api/books";
 import { aiApi } from "@/lib/api/ai";
@@ -50,11 +53,36 @@ export default function BookPage({ params }: BookPageProps) {
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
 
+  // Synopsis / Summary editing state
+  const [isEditingSummary, setIsEditingSummary] = useState(false);
+  const [summaryText, setSummaryText] = useState("");
+  const [isSavingSummary, setIsSavingSummary] = useState(false);
+
   // 1. Global book details
-  const { data: book, isLoading: bookLoading } = useSWR(
+  const { data: book, isLoading: bookLoading, mutate: mutateBook } = useSWR(
     ["book", id],
     () => booksApi.getById(id)
   );
+
+  const handleStartEditSummary = () => {
+    setSummaryText(book?.description ?? aiSummary ?? "");
+    setIsEditingSummary(true);
+  };
+
+  const handleSaveSummary = async () => {
+    if (!book) return;
+    setIsSavingSummary(true);
+    try {
+      const updated = await booksApi.update(id, { description: summaryText.trim() });
+      await mutateBook(updated, false);
+      setAiSummary(null);
+      setIsEditingSummary(false);
+    } catch (e) {
+      console.error("Error saving summary:", e);
+    } finally {
+      setIsSavingSummary(false);
+    }
+  };
 
   const handleGenerateSummary = async () => {
     if (!book) return;
@@ -62,7 +90,11 @@ export default function BookPage({ params }: BookPageProps) {
     try {
       const res = await aiApi.summarizeBook(book.title, book.author);
       if (res?.summary) {
+        setSummaryText(res.summary);
         setAiSummary(res.summary);
+        if (!isEditingSummary) {
+          setIsEditingSummary(true);
+        }
       }
     } catch (e) {
       console.error("AI summary error:", e);
@@ -253,29 +285,113 @@ export default function BookPage({ params }: BookPageProps) {
             )}
           </div>
 
-          {/* Description & AI Summary */}
-          <div className="space-y-3">
-            {book.description || aiSummary ? (
+          {/* Description & AI Summary (View / Edit Mode) */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Sinopsis / Resumen
+              </label>
+
+              {!isEditingSummary && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleStartEditSummary}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-primary-600 px-2.5 py-1 rounded-lg hover:bg-gray-100 transition"
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                    Editar resumen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleGenerateSummary}
+                    disabled={isSummarizing}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700 px-2.5 py-1 rounded-lg bg-primary-50 hover:bg-primary-100 transition disabled:opacity-50"
+                  >
+                    {isSummarizing ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5 text-primary-600" />
+                    )}
+                    {book.description ? "Regenerar con IA" : "Generar con IA"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {isEditingSummary ? (
+              <div className="space-y-3 bg-gray-50/80 p-4 rounded-xl border border-primary-200 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-gray-700">
+                    Editando sinopsis del libro:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleGenerateSummary}
+                    disabled={isSummarizing}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 bg-white border border-primary-200 px-2.5 py-1 rounded-lg hover:bg-primary-50 transition shadow-xs disabled:opacity-50"
+                  >
+                    {isSummarizing ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5 text-primary-600" />
+                    )}
+                    Rellenar con IA
+                  </button>
+                </div>
+
+                <textarea
+                  rows={5}
+                  value={summaryText}
+                  onChange={(e) => setSummaryText(e.target.value)}
+                  placeholder="Escribe o genera la sinopsis y temas principales de este libro..."
+                  className="w-full p-3 border border-gray-300 rounded-lg text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white leading-relaxed resize-y"
+                  autoFocus
+                />
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditingSummary(false);
+                      setSummaryText("");
+                    }}
+                    disabled={isSavingSummary}
+                    className="px-3.5 py-1.5 border border-gray-300 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-100 transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveSummary}
+                    disabled={isSavingSummary}
+                    className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-primary-600 text-white text-xs font-semibold rounded-lg hover:bg-primary-700 transition shadow-sm disabled:opacity-50"
+                  >
+                    {isSavingSummary ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5" />
+                    )}
+                    Guardar resumen
+                  </button>
+                </div>
+              </div>
+            ) : book.description || aiSummary ? (
               <div className="text-sm text-gray-700 leading-relaxed bg-gray-50/70 p-4 rounded-xl border border-gray-100 whitespace-pre-wrap">
                 {aiSummary || book.description}
               </div>
-            ) : null}
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleGenerateSummary}
-                disabled={isSummarizing}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 text-primary-700 rounded-lg text-xs font-medium hover:bg-primary-100 transition disabled:opacity-50"
-              >
-                {isSummarizing ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5 text-primary-600" />
-                )}
-                {book.description ? "✨ Mejorar / Ampliar resumen con IA" : "✨ Generar sinopsis con IA"}
-              </button>
-            </div>
+            ) : (
+              <div className="text-xs text-gray-400 italic bg-gray-50/50 p-4 rounded-xl border border-dashed border-gray-200 flex items-center justify-between">
+                <span>Sin sinopsis registrada. Puedes redactarla tú mismo o generarla con IA.</span>
+                <button
+                  type="button"
+                  onClick={handleStartEditSummary}
+                  className="text-primary-600 hover:underline font-medium ml-2 flex-shrink-0"
+                >
+                  + Escribir sinopsis
+                </button>
+              </div>
+            )}
           </div>
 
           {/* User's copy management */}

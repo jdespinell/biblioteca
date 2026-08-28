@@ -4,11 +4,21 @@ import { useState, useEffect } from "react";
 import useSWR, { mutate } from "swr";
 import { useLocale, useTranslations } from "next-intl";
 import { useSearchParams } from "next/navigation";
-import { BookOpen, Filter, Search, Plus, MapPin, X } from "lucide-react";
+import {
+  BookOpen,
+  Filter,
+  Search,
+  Plus,
+  MapPin,
+  X,
+  LayoutGrid,
+  List as ListIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { userBooksApi, type UserBook, type BookStatus } from "@/lib/api/user-books";
 import { locationsApi, type Location } from "@/lib/api/locations";
 import BookCard from "@/components/book/BookCard";
+import BookListRow from "@/components/book/BookListRow";
 import { useAuth } from "@/hooks/useAuth";
 
 const STATUS_FILTERS: { value: "all" | "reading" | "unread" | "read"; label: string }[] = [
@@ -28,6 +38,7 @@ export default function LibraryPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "reading" | "unread" | "read">("all");
   const [locationFilter, setLocationFilter] = useState<string>(initialLocation);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   useEffect(() => {
     const locId = searchParams?.get("location_id");
@@ -35,6 +46,18 @@ export default function LibraryPage() {
       setLocationFilter(locId);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("library_view_mode");
+    if (saved === "grid" || saved === "list") {
+      setViewMode(saved);
+    }
+  }, []);
+
+  const handleToggleViewMode = (mode: "grid" | "list") => {
+    setViewMode(mode);
+    localStorage.setItem("library_view_mode", mode);
+  };
 
   // Load locations for filtering
   const { data: locations } = useSWR<Location[]>(
@@ -106,13 +129,42 @@ export default function LibraryPage() {
             {books ? `${books.length} libros en total` : "Cargando..."}
           </p>
         </div>
-        <Link
-          href={`/${locale}/library/add`}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 transition-colors shadow-sm text-sm"
-        >
-          <Plus className="h-4 w-4" />
-          {t("addBook")}
-        </Link>
+
+        <div className="flex items-center gap-3">
+          {/* View mode switcher */}
+          <div className="flex items-center bg-gray-100 p-1 rounded-xl border border-gray-200">
+            <button
+              onClick={() => handleToggleViewMode("grid")}
+              className={`p-1.5 rounded-lg transition-all ${
+                viewMode === "grid"
+                  ? "bg-white text-primary-600 shadow-sm font-semibold"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+              title="Vista de Cuadrícula"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => handleToggleViewMode("list")}
+              className={`p-1.5 rounded-lg transition-all ${
+                viewMode === "list"
+                  ? "bg-white text-primary-600 shadow-sm font-semibold"
+                  : "text-gray-500 hover:text-gray-700"
+              }`}
+              title="Vista de Lista"
+            >
+              <ListIcon className="h-4 w-4" />
+            </button>
+          </div>
+
+          <Link
+            href={`/${locale}/library/add`}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white font-medium rounded-xl hover:bg-primary-700 transition-colors shadow-sm text-sm"
+          >
+            <Plus className="h-4 w-4" />
+            {t("addBook")}
+          </Link>
+        </div>
       </div>
 
       {/* Filters Bar */}
@@ -209,7 +261,7 @@ export default function LibraryPage() {
         )}
       </div>
 
-      {/* Books Grid */}
+      {/* Books Display: Grid vs List */}
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
           {Array.from({ length: 12 }).map((_, i) => (
@@ -247,10 +299,21 @@ export default function LibraryPage() {
             </Link>
           </div>
         </div>
-      ) : (
+      ) : viewMode === "grid" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
           {books?.map((userBook) => (
             <BookCard
+              key={userBook.id}
+              userBook={userBook}
+              onDelete={handleDelete}
+              onStatusChange={handleStatusChange}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {books?.map((userBook) => (
+            <BookListRow
               key={userBook.id}
               userBook={userBook}
               onDelete={handleDelete}
