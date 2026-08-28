@@ -21,7 +21,7 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
 
     const startScanning = async () => {
       try {
-        const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+        const devices = await reader.listVideoInputDevices();
 
         if (devices.length === 0) {
           setError("No se encontró cámara en este dispositivo");
