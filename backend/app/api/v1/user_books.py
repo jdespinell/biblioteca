@@ -192,7 +192,8 @@ async def create_user_book(
     await db.flush()
 
     # Reload with relationships
-    return await _get_user_book_or_404(user_book.id, current_user.id, db)
+    ub = await _get_user_book_or_404(user_book.id, current_user.id, db)
+    return _serialize_user_book(ub)
 
 
 @router.get("/{user_book_id}", response_model=UserBookResponse)

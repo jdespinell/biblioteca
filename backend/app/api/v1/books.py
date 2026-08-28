@@ -123,7 +123,7 @@ async def create_book(
     Create a new GlobalBook entry.
     Returns 409 if ISBN already exists in the catalog.
     """
-    # Check for ISBN collision before insert
+    # Check for existing book by ISBN in catalog (reuse if already present)
     if body.isbn or body.isbn13:
         conditions = []
         if body.isbn:
@@ -132,11 +132,9 @@ async def create_book(
             conditions.append(GlobalBook.isbn13 == body.isbn13)
 
         existing = await db.execute(select(GlobalBook).where(or_(*conditions)))
-        if existing.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="A book with this ISBN already exists in the catalog",
-            )
+        existing_book = existing.scalar_one_or_none()
+        if existing_book:
+            return GlobalBookResponse.model_validate(existing_book)
 
     book = GlobalBook(**body.model_dump())
     db.add(book)
