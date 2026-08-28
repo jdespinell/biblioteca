@@ -95,7 +95,7 @@ def set_auth_cookies(
     refresh_token: str,
 ) -> None:
     """
-    Store JWT tokens in HttpOnly, Secure cookies.
+    Store JWT tokens in HttpOnly, Secure cookies with global path="/".
     This prevents XSS from reading the tokens (unlike localStorage).
     """
     common_kwargs = {
@@ -103,6 +103,7 @@ def set_auth_cookies(
         "secure": settings.COOKIE_SECURE,
         "samesite": settings.COOKIE_SAMESITE,
         "domain": settings.COOKIE_DOMAIN,
+        "path": "/",
     }
     response.set_cookie(
         key=ACCESS_TOKEN_COOKIE,
@@ -114,7 +115,6 @@ def set_auth_cookies(
         key=REFRESH_TOKEN_COOKIE,
         value=refresh_token,
         max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-        path="/api/v1/auth/refresh",  # Scope refresh token only to refresh endpoint
         **common_kwargs,
     )
 
@@ -122,4 +122,4 @@ def set_auth_cookies(
 def clear_auth_cookies(response: Response) -> None:
     """Remove JWT cookies on logout."""
     response.delete_cookie(ACCESS_TOKEN_COOKIE, path="/")
-    response.delete_cookie(REFRESH_TOKEN_COOKIE, path="/api/v1/auth/refresh")
+    response.delete_cookie(REFRESH_TOKEN_COOKIE, path="/")
