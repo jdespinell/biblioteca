@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { api } from "./client";
 
 export interface CoverRecognitionResult {
   title: string | null;
@@ -14,13 +14,13 @@ export interface BookSummaryResult {
 
 export const aiApi = {
   recognizeCover: (imageBase64: string, mimeType: string = "image/jpeg") =>
-    apiClient.post<CoverRecognitionResult>("/ai/recognize-cover", {
+    api.post<CoverRecognitionResult>("/v1/ai/recognize-cover", {
       image_base64: imageBase64,
       mime_type: mimeType,
     }),
 
   summarizeBook: (title: string, author: string) =>
-    apiClient.post<BookSummaryResult>("/ai/summarize", {
+    api.post<BookSummaryResult>("/v1/ai/summarize", {
       title,
       author,
     }),

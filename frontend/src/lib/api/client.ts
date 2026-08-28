@@ -92,3 +92,5 @@ export const api = {
   delete: <T>(path: string, options?: FetchOptions) =>
     apiFetch<T>(path, { method: "DELETE", ...options }),
 };
+
+export const apiClient = api;
