@@ -40,15 +40,34 @@ export default function AddBookPage() {
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const { data: locations } = useSWR<Location[]>("locations", locationsApi.list);
 
   const handleSearch = async () => {
-    if (!query.trim()) return;
+    const clean = query.trim();
+    if (!clean) return;
     setIsSearching(true);
+    setErrorMessage(null);
     try {
-      const results = await booksApi.search(query, 10);
+      // If query is an ISBN (10 or 13 digits), try direct ISBN lookup
+      const cleanIsbn = clean.replace(/[-\s]/g, "");
+      if (/^(97[89])?\d{9}[\dX]$/i.test(cleanIsbn)) {
+        const result = await booksApi.lookupISBN(cleanIsbn);
+        if (result.found) {
+          setSelectedBook(result);
+          setStep("confirm");
+          return;
+        }
+      }
+      const results = await booksApi.search(clean, 10);
       setSearchResults(results);
+      if (results.length === 0) {
+        setErrorMessage("No se encontraron libros con ese título o autor.");
+      }
+    } catch (e) {
+      console.error("Search error:", e);
+      setErrorMessage("Error al buscar. Verifica que el servidor esté activo.");
     } finally {
       setIsSearching(false);
     }
@@ -57,12 +76,18 @@ export default function AddBookPage() {
   const handleISBNScan = async (isbn: string) => {
     setShowScanner(false);
     setIsSearching(true);
+    setErrorMessage(null);
     try {
       const result = await booksApi.lookupISBN(isbn);
       if (result.found) {
         setSelectedBook(result);
         setStep("confirm");
+      } else {
+        setErrorMessage(`No se encontró ningún libro para el ISBN: ${isbn}`);
       }
+    } catch (e) {
+      console.error("ISBN scan error:", e);
+      setErrorMessage("Error al consultar el ISBN en Open Library / Google Books.");
     } finally {
       setIsSearching(false);
     }
@@ -171,6 +196,12 @@ export default function AddBookPage() {
                 {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
               </button>
             </div>
+
+            {errorMessage && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-sm">
+                {errorMessage}
+              </div>
+            )}
 
             {/* Action buttons */}
             <div className="flex gap-3 pt-2 border-t border-gray-100">
