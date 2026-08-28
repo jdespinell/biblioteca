@@ -23,6 +23,7 @@ import { booksApi, type GlobalBook, type ISBNLookupResult, type GlobalBookCreate
 import { userBooksApi } from "@/lib/api/user-books";
 import { locationsApi, type Location } from "@/lib/api/locations";
 import { aiApi } from "@/lib/api/ai";
+import BookSummaryViewer from "@/components/book/BookSummaryViewer";
 import useSWR from "swr";
 
 const BarcodeScanner = dynamic(
@@ -598,9 +599,7 @@ export default function AddBookPage() {
               </button>
             </div>
             {selectedBook.description ? (
-              <p className="text-sm text-gray-700 leading-relaxed bg-gray-50/70 p-3.5 rounded-xl border border-gray-100 whitespace-pre-wrap">
-                {selectedBook.description}
-              </p>
+              <BookSummaryViewer content={selectedBook.description} />
             ) : (
               <p className="text-xs text-gray-400 italic bg-gray-50/50 p-3 rounded-lg border border-dashed border-gray-200">
                 Sin sinopsis disponible. Haz clic en &quot;Generar con IA&quot; para crear una automáticamente.

@@ -31,6 +31,7 @@ import { useAuth } from "@/hooks/useAuth";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import CommunityNoteCard from "@/components/notes/CommunityNoteCard";
+import BookSummaryViewer from "@/components/book/BookSummaryViewer";
 
 const MarkdownEditor = dynamic(
   () => import("@/components/editor/MarkdownEditor"),
@@ -377,9 +378,7 @@ export default function BookPage({ params }: BookPageProps) {
                 </div>
               </div>
             ) : book.description || aiSummary ? (
-              <div className="text-sm text-gray-700 leading-relaxed bg-gray-50/70 p-4 rounded-xl border border-gray-100 whitespace-pre-wrap">
-                {aiSummary || book.description}
-              </div>
+              <BookSummaryViewer content={aiSummary || book.description || ""} />
             ) : (
               <div className="text-xs text-gray-400 italic bg-gray-50/50 p-4 rounded-xl border border-dashed border-gray-200 flex items-center justify-between">
                 <span>Sin sinopsis registrada. Puedes redactarla tú mismo o generarla con IA.</span>
