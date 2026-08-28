@@ -3,7 +3,6 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,11 +41,9 @@ class Settings(BaseSettings):
     MINIO_BUCKET_NAME: str = "biblioteca-files"
 
     # ── CORS ──────────────────────────────────────────────────────────────────
-    CORS_ORIGINS: list[str] = [
-        "http://localhost:3000",
-        "http://localhost:80",
-        "http://localhost",
-    ]
+    # Stored as comma-separated string — pydantic-settings v2 cannot reliably
+    # coerce "a,b,c" into list[str] from env vars without JSON brackets.
+    CORS_ORIGINS: str = "http://localhost:3000,http://localhost:80,http://localhost"
 
     # ── Rate Limiting ─────────────────────────────────────────────────────────
     RATE_LIMIT_PER_MINUTE: int = 100
@@ -58,12 +55,10 @@ class Settings(BaseSettings):
     COOKIE_SAMESITE: Literal["lax", "strict", "none"] = "lax"
     COOKIE_DOMAIN: str | None = None
 
-    @field_validator("CORS_ORIGINS", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v: str | list[str]) -> list[str]:
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Return CORS_ORIGINS as a parsed list, stripping whitespace."""
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
     @property
     def is_production(self) -> bool:

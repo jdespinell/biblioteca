@@ -68,7 +68,7 @@ app.add_middleware(SlowAPIMiddleware)
 # CORS — restrictive: only listed origins, credentials allowed (for cookies)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,  # Required for HttpOnly cookie auth
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Accept", "Authorization", "X-Requested-With"],

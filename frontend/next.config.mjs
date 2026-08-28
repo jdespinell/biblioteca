@@ -1,4 +1,3 @@
-import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 import withPWAInit from "@ducanh2912/next-pwa";
 
@@ -16,7 +15,8 @@ const withPWA = withPWAInit({
   },
 });
 
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   output: "standalone",
   reactStrictMode: true,
 
@@ -40,11 +40,11 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // unsafe-eval needed for Next.js dev
-              "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net", // KaTeX CDN
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+              "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
               "img-src 'self' data: https: blob:",
               "font-src 'self' https://cdn.jsdelivr.net",
-              "connect-src 'self' http://localhost:8000 http://localhost",
+              "connect-src 'self' http://localhost:8000 http://localhost:8002 http://localhost https://biblioteca.juliancloud.site",
               "media-src 'self' blob:",
               "object-src 'none'",
               "base-uri 'self'",

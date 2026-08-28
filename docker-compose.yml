@@ -1,5 +1,3 @@
-version: "3.9"
-
 # ─────────────────────────────────────────────────────────────────────────────
 # PUERTOS DEL HOST (sin conflictos con otros servicios del servidor)
 #
