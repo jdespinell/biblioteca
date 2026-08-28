@@ -48,6 +48,13 @@ export default function LoginPage() {
     }
   };
 
+  const onInvalid = (formErrors: Record<string, { message?: string }>) => {
+    const firstKey = Object.keys(formErrors)[0];
+    if (firstKey && formErrors[firstKey]?.message) {
+      setApiError(formErrors[firstKey].message);
+    }
+  };
+
   return (
     <div className="min-h-[80vh] flex items-center justify-center">
       <div className="w-full max-w-sm">
@@ -61,7 +68,7 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+          <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-5">
             {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">

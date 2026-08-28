@@ -64,6 +64,13 @@ export default function RegisterPage() {
     }
   };
 
+  const onInvalid = (formErrors: Record<string, { message?: string }>) => {
+    const firstKey = Object.keys(formErrors)[0];
+    if (firstKey && formErrors[firstKey]?.message) {
+      setApiError(formErrors[firstKey].message);
+    }
+  };
+
   const fields = [
     {
       name: "full_name" as const,
@@ -103,7 +110,7 @@ export default function RegisterPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
             {fields.map((field) => (
               <div key={field.name}>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
