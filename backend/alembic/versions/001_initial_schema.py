@@ -30,9 +30,9 @@ def upgrade() -> None:
         "pdf", "image",
         name="attachment_type_enum",
     )
-    book_source.create(op.get_bind())
-    book_status.create(op.get_bind())
-    attachment_type.create(op.get_bind())
+    book_source.create(op.get_bind(), checkfirst=True)
+    book_status.create(op.get_bind(), checkfirst=True)
+    attachment_type.create(op.get_bind(), checkfirst=True)
 
     # ── users ─────────────────────────────────────────────────────────────────
     op.create_table(
