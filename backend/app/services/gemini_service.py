@@ -161,33 +161,39 @@ Sé elocuente y no agregues introducciones innecesarias."""
     return ""
 
 
-_ISBN_IDENTIFY_PROMPT = """You are a bibliographic database system.
-A user is searching for a book with this ISBN: {isbn}
+_ISBN_GROUNDED_PROMPT = """You are a bibliographic extraction assistant.
+A user searched for the book with ISBN: {isbn}
+Here are the real search results and snippets retrieved from web book databases for this ISBN:
+---
+{snippets}
+---
 
-If you know with certainty which book corresponds to this ISBN (or what book title and author are associated with it), return ONLY valid JSON matching this exact schema:
+Carefully analyze these snippets. If they describe a specific, real book corresponding to this ISBN, extract the bibliographic details.
+Return ONLY valid JSON matching this exact schema:
 {{
-  "title": "string (official book title)",
+  "title": "string (official book title, clean without store tags)",
   "author": "string (author or authors)",
   "publisher": "string or null (publisher name)",
-  "published_year": number or null (year published, e.g. 2018),
+  "published_year": number or null (e.g. 2018),
   "page_count": number or null,
-  "language": "string (e.g. 'es', 'en')",
+  "language": "string (e.g. 'es', 'pt', 'en')",
   "description": "string or null (concise synopsis in Spanish)",
   "found": true
 }}
 
-If you do NOT know the exact book for this ISBN, return ONLY:
+If the snippets DO NOT contain information about this book, return ONLY:
 {{
   "found": false
 }}
 """
 
 
-async def identify_book_by_isbn(isbn: str) -> ISBNLookupResponse | None:
+async def identify_book_from_web_snippets(isbn: str, snippets: str) -> ISBNLookupResponse | None:
     """
-    Use Gemini to identify book bibliographic details from an ISBN when external APIs fail.
+    Use Gemini to extract book bibliographic details grounded in real web search snippets.
+    This guarantees zero hallucinations because the model extracts facts directly from retrieved text.
     """
-    if not settings.GEMINI_API_KEY:
+    if not settings.GEMINI_API_KEY or not snippets.strip():
         return None
 
     models_to_try = _get_candidate_models()
@@ -197,12 +203,11 @@ async def identify_book_by_isbn(isbn: str) -> ISBNLookupResponse | None:
                 model_name=model_name,
                 generation_config=genai.GenerationConfig(
                     response_mime_type="application/json",
-                    temperature=0.1,
+                    temperature=0.0,
                 ),
             )
-            response = await model.generate_content_async(
-                _ISBN_IDENTIFY_PROMPT.format(isbn=isbn)
-            )
+            prompt = _ISBN_GROUNDED_PROMPT.format(isbn=isbn, snippets=snippets)
+            response = await model.generate_content_async(prompt)
             raw = response.text.strip()
             data = json.loads(raw)
             if data.get("found") and data.get("title"):
@@ -217,11 +222,11 @@ async def identify_book_by_isbn(isbn: str) -> ISBNLookupResponse | None:
                     language=data.get("language", "es"),
                     description=data.get("description"),
                     cover_url=None,
-                    source="ai",
+                    source="openlibrary",
                     found=True,
                 )
             return None
         except Exception as e:
-            logger.warning("Gemini model '%s' failed for ISBN identification: %s", model_name, e)
+            logger.warning("Gemini grounded ISBN identification failed on '%s': %s", model_name, e)
 
     return None

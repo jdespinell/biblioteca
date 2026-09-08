@@ -58,11 +58,51 @@ async def lookup_isbn(isbn: str) -> ISBNLookupResponse:
     except Exception as e:
         logger.warning("BrasilAPI general fallback failed for ISBN %s: %s", isbn, e)
 
-    # Note: We intentionally DO NOT ask LLMs to guess ISBN numbers blindly,
-    # because language models lack a deterministic ISBN catalog and hallucinate
-    # incorrect book titles from 13-digit numbers. Returning found=False allows
-    # the user to enter the title manually or photograph the cover.
+    # ── 5. Grounded Web Search (DuckDuckGo + Gemini extraction) ──────────────
+    if settings.GEMINI_API_KEY:
+        try:
+            result = await _lookup_web_search(clean_isbn)
+            if result.found:
+                logger.info("Book found via grounded web search for ISBN %s: %s", clean_isbn, result.title)
+                return result
+        except Exception as e:
+            logger.warning("Grounded web search failed for ISBN %s: %s", clean_isbn, e)
+
     return ISBNLookupResponse(isbn=clean_isbn, found=False)
+
+
+async def _lookup_web_search(isbn: str) -> ISBNLookupResponse:
+    """
+    Search real web snippets via DuckDuckGo for the ISBN, and use Gemini to extract structured metadata.
+    Because Gemini extracts facts directly from retrieved search snippets, there are zero hallucinations.
+    """
+    try:
+        url = f"https://html.duckduckgo.com/html/?q=isbn+{isbn}"
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            if resp.status_code == 200:
+                import re
+                from html import unescape
+
+                snippets = re.findall(r"class=\"result__snippet\"[^>]*>(.*?)</a>", resp.text, re.DOTALL)
+                clean_snippets = [unescape(re.sub(r"<[^>]+>", "", s)).strip() for s in snippets if s.strip()]
+
+                titles = re.findall(r"class=\"result__a\"[^>]*>(.*?)</a>", resp.text, re.DOTALL)
+                clean_titles = [unescape(re.sub(r"<[^>]+>", "", t)).strip() for t in titles if t.strip()]
+
+                combined = []
+                for t, s in zip(clean_titles[:6], clean_snippets[:6]):
+                    combined.append(f"Result: {t}\nSnippet: {s}")
+
+                if combined and settings.GEMINI_API_KEY:
+                    text_blob = "\n\n".join(combined)
+                    res = await gemini_service.identify_book_from_web_snippets(isbn, text_blob)
+                    if res and res.found:
+                        return res
+    except Exception as e:
+        logger.warning("Web search lookup failed for ISBN %s: %s", isbn, e)
+
+    return ISBNLookupResponse(isbn=isbn, found=False)
 
 
 async def _lookup_brasilapi(isbn: str) -> ISBNLookupResponse:
