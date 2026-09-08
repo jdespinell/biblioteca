@@ -8,6 +8,8 @@ export interface CoverRecognitionResult {
   confidence: number;
 }
 
+export type CoverRecognitionResponse = CoverRecognitionResult;
+
 export interface BookSummaryResult {
   summary: string;
 }

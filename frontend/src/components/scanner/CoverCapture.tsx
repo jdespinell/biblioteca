@@ -2,10 +2,10 @@
 
 import { useRef, useState } from "react";
 import { Camera, Image as ImageIcon, X, Loader2, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
-import { aiApi, type CoverRecognitionResponse } from "@/lib/api/ai";
+import { aiApi, type CoverRecognitionResult } from "@/lib/api/ai";
 
 interface CoverCaptureProps {
-  onResult: (result: CoverRecognitionResponse, coverImage?: string | null) => void;
+  onResult: (result: CoverRecognitionResult, coverImage?: string | null) => void;
   onClose: () => void;
 }
 
@@ -67,7 +67,7 @@ export default function CoverCapture({ onResult, onClose }: CoverCaptureProps) {
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const [preview, setPreview] = useState<string | null>(null);
-  const [result, setResult] = useState<CoverRecognitionResponse | null>(null);
+  const [result, setResult] = useState<CoverRecognitionResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
