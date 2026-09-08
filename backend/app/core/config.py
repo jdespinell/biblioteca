@@ -31,9 +31,10 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # 30 days
 
-    # ── Google Gemini ─────────────────────────────────────────────────────────
+    # ── Google Gemini & Books ─────────────────────────────────────────────────
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-1.5-flash-latest"
+    GOOGLE_BOOKS_API_KEY: str = ""
 
     # ── MinIO / S3 ────────────────────────────────────────────────────────────
     MINIO_ENDPOINT: str = "http://localhost:9000"

@@ -4,6 +4,7 @@ import logging
 
 import httpx
 
+from app.core.config import settings
 from app.schemas.ai import ISBNLookupResponse
 
 logger = logging.getLogger(__name__)
@@ -97,10 +98,14 @@ async def _lookup_open_library(isbn: str) -> ISBNLookupResponse:
 
 
 async def _lookup_google_books(isbn: str) -> ISBNLookupResponse:
+    params: dict[str, str] = {"q": f"isbn:{isbn}"}
+    if settings.GOOGLE_BOOKS_API_KEY:
+        params["key"] = settings.GOOGLE_BOOKS_API_KEY
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(
             GOOGLE_BOOKS_URL,
-            params={"q": f"isbn:{isbn}"},
+            params=params,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -222,19 +227,36 @@ async def search_external_books(query: str, limit: int = 10) -> list[dict]:
     # ── 2. Fallback / Supplement with Google Books ──
     if len(results) < limit:
         try:
+            params: dict[str, str | int] = {
+                "q": query,
+                "maxResults": min(max(limit - len(results), 5), 10),
+                "printType": "books",
+            }
+            if settings.GOOGLE_BOOKS_API_KEY:
+                params["key"] = settings.GOOGLE_BOOKS_API_KEY
+
             async with httpx.AsyncClient(timeout=6.0) as client:
                 resp = await client.get(
                     GOOGLE_BOOKS_URL,
-                    params={
-                        "q": query,
-                        "maxResults": min(max(limit - len(results), 5), 10),
-                        "printType": "books",
-                    },
+                    params=params,
                     headers={"User-Agent": USER_AGENT},
                 )
+                items = []
                 if resp.status_code == 200:
-                    data = resp.json()
-                    for item in data.get("items", []):
+                    items = resp.json().get("items", [])
+
+                # If no items found and query has multiple words, try intitle search
+                if not items and " " in query:
+                    params["q"] = f"intitle:{query}"
+                    resp2 = await client.get(
+                        GOOGLE_BOOKS_URL,
+                        params=params,
+                        headers={"User-Agent": USER_AGENT},
+                    )
+                    if resp2.status_code == 200:
+                        items = resp2.json().get("items", [])
+
+                for item in items:
                         vol = item.get("volumeInfo", {})
                         title = vol.get("title")
                         if not title:

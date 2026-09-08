@@ -167,20 +167,43 @@ export default function AddBookPage() {
     }
   };
 
-  const handleCoverResult = (result: {
-    title: string | null;
-    author: string | null;
-    publisher: string | null;
-    isbn: string | null;
-    confidence: number;
-  }) => {
+  const handleCoverResult = (
+    result: {
+      title: string | null;
+      author: string | null;
+      publisher: string | null;
+      isbn: string | null;
+      confidence: number;
+    },
+    coverImage?: string | null
+  ) => {
     setShowCapture(false);
-    if (result.isbn) {
-      handleISBNScan(result.isbn);
-    } else if (result.title) {
-      setQuery(result.title);
-      handleSearch();
+    if (!result.title && !result.isbn) {
+      setErrorMessage("No se pudieron identificar datos de la portada. Puedes agregarlo manualmente.");
+      return;
     }
+
+    // Directly populate the book data from the recognized photo
+    const bookData: GlobalBookCreate = {
+      title: result.title || "Título no identificado",
+      author: result.author || "Autor desconocido",
+      publisher: result.publisher || undefined,
+      isbn: result.isbn || undefined,
+      cover_url: coverImage || undefined,
+      language: "es",
+      source: "ai",
+    };
+
+    // Pre-populate manual form in case the user wants to adjust details
+    setManualTitle(bookData.title);
+    setManualAuthor(bookData.author);
+    setManualPublisher(result.publisher || "");
+    setManualIsbn(result.isbn || "");
+    if (coverImage) setManualCoverUrl(coverImage);
+
+    // Skip external search and go directly to confirm step
+    setSelectedBook(bookData);
+    setStep("confirm");
   };
 
   const handleSelectBook = (book: GlobalBook) => {
@@ -567,6 +590,15 @@ export default function AddBookPage() {
               )}
               {selectedBook.isbn && (
                 <p className="text-xs font-mono text-gray-400 mt-1">ISBN: {selectedBook.isbn}</p>
+              )}
+              {"source" in selectedBook && (selectedBook.source === "ai" || selectedBook.source === "manual") && (
+                <button
+                  type="button"
+                  onClick={() => setStep("manual")}
+                  className="mt-2 text-xs text-primary-600 hover:text-primary-700 hover:underline flex items-center gap-1 font-medium"
+                >
+                  <Edit3 className="h-3 w-3" /> Editar datos del libro
+                </button>
               )}
             </div>
           </div>
