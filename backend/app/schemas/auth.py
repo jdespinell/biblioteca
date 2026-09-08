@@ -39,6 +39,7 @@ class UserResponse(BaseModel):
     email: EmailStr
     full_name: str | None
     is_active: bool
+    is_superuser: bool = False
     preferred_language: str
     created_at: datetime
 

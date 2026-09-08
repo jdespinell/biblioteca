@@ -43,11 +43,16 @@ async def register(
             detail="Ya existe una cuenta con este correo electrónico",
         )
 
+    # If this is the first user, make them a superuser
+    user_count_res = await db.execute(select(func.count(User.id)))
+    is_first_user = (user_count_res.scalar() or 0) == 0
+
     user = User(
         email=clean_email,
         hashed_password=hash_password(body.password),
         full_name=body.full_name,
         preferred_language=body.preferred_language,
+        is_superuser=is_first_user,
     )
     db.add(user)
     await db.flush()  # Get user.id without committing

@@ -82,7 +82,20 @@ async def get_optional_user(
         return None
 
 
+async def get_current_superuser(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> User:
+    """Validate that the authenticated active user has superuser privileges."""
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado: se requieren permisos de administrador",
+        )
+    return current_user
+
+
 # ── Type aliases for dependency injection ─────────────────────────────────────
 CurrentUser = Annotated[User, Depends(get_current_active_user)]
+CurrentSuperuser = Annotated[User, Depends(get_current_superuser)]
 CurrentUserOptional = Annotated[User | None, Depends(get_optional_user)]
 DBSession = Annotated[AsyncSession, Depends(get_db)]

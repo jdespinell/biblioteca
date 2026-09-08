@@ -6,14 +6,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import {
   BookOpen,
-  Heart,
-  Compass,
-  MapPin,
-  Menu,
-  X,
   LogOut,
-  User,
   Globe,
+  ShieldCheck,
+  User as UserIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -29,24 +25,9 @@ export default function Nav() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAuthenticated, logout } = useAuth();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
 
-  const navLinks = isAuthenticated
-    ? [
-        { href: `/${locale}`, label: t("home"), icon: BookOpen },
-        { href: `/${locale}/library`, label: t("library"), icon: BookOpen },
-        { href: `/${locale}/wishlist`, label: t("wishlist"), icon: Heart },
-        { href: `/${locale}/discover`, label: t("discover"), icon: Compass },
-        { href: `/${locale}/locations`, label: t("locations"), icon: MapPin },
-      ]
-    : [
-        { href: `/${locale}`, label: t("home"), icon: BookOpen },
-        { href: `/${locale}/discover`, label: t("discover"), icon: Compass },
-      ];
-
   const switchLocale = (newLocale: string) => {
-    // Replace the current locale segment in the path
     const segments = pathname.split("/");
     segments[1] = newLocale;
     router.push(segments.join("/"));
@@ -58,56 +39,58 @@ export default function Nav() {
     router.push(`/${locale}/auth/login`);
   };
 
+  const isSuperuser = isAuthenticated && !!user?.is_superuser;
+
   return (
-    <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shadow-sm">
+    <header className="bg-white border-b border-gray-200/80 sticky top-0 z-30 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-14 sm:h-16">
           {/* Logo */}
           <Link
             href={`/${locale}`}
-            className="flex items-center gap-2 text-primary-600 font-bold text-xl"
+            className="flex items-center gap-2 text-primary-600 font-bold text-lg sm:text-xl tracking-tight"
           >
-            <BookOpen className="h-6 w-6" />
-            <span className="hidden sm:block">Biblioteca</span>
+            <div className="p-1.5 bg-primary-50 rounded-xl">
+              <BookOpen className="h-5 w-5 text-primary-600" />
+            </div>
+            <span>Biblioteca</span>
           </Link>
 
-          {/* Desktop nav */}
-          <div className="hidden md:flex items-center gap-1">
-            {navLinks.map((link) => (
+          {/* Right actions: Admin button, Language switcher & User Auth */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Admin Panel Link for Superusers */}
+            {isSuperuser && (
               <Link
-                key={link.href}
-                href={link.href}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  pathname === link.href
-                    ? "bg-primary-50 text-primary-700"
-                    : "text-gray-600 hover:text-primary-600 hover:bg-gray-50"
+                href={`/${locale}/admin`}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow-xs ${
+                  pathname.includes("/admin")
+                    ? "bg-indigo-600 text-white shadow-indigo-200"
+                    : "bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                 }`}
               >
-                {link.label}
+                <ShieldCheck className="h-4 w-4" />
+                <span className="hidden sm:inline">Panel Admin</span>
               </Link>
-            ))}
-          </div>
+            )}
 
-          {/* Right side */}
-          <div className="flex items-center gap-2">
             {/* Language switcher */}
             <div className="relative">
               <button
                 onClick={() => setLangOpen(!langOpen)}
-                className="p-2 rounded-md text-gray-500 hover:text-primary-600 hover:bg-gray-50 transition-colors"
-                aria-label="Change language"
+                className="p-2 rounded-xl text-gray-500 hover:text-primary-600 hover:bg-gray-50 transition-colors"
+                aria-label="Cambiar idioma"
               >
-                <Globe className="h-5 w-5" />
+                <Globe className="h-4 w-4" />
               </button>
               {langOpen && (
-                <div className="absolute right-0 mt-1 w-40 bg-white rounded-md shadow-lg border border-gray-200 py-1 z-50">
+                <div className="absolute right-0 mt-1 w-36 bg-white rounded-xl shadow-lg border border-gray-100 py-1.5 z-50">
                   {LOCALES.map((l) => (
                     <button
                       key={l.code}
                       onClick={() => switchLocale(l.code)}
-                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                      className={`w-full text-left px-3.5 py-1.5 text-xs transition-colors ${
                         locale === l.code
-                          ? "text-primary-600 bg-primary-50 font-medium"
+                          ? "text-primary-600 bg-primary-50 font-bold"
                           : "text-gray-700 hover:bg-gray-50"
                       }`}
                     >
@@ -121,67 +104,39 @@ export default function Nav() {
             {/* Auth */}
             {isAuthenticated ? (
               <div className="flex items-center gap-2">
-                <span className="hidden sm:block text-sm text-gray-600">
-                  {user?.full_name ?? user?.email}
-                </span>
+                <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 rounded-xl border border-gray-100 text-xs text-gray-700">
+                  <UserIcon className="h-3.5 w-3.5 text-gray-400" />
+                  <span className="font-medium max-w-[140px] truncate">
+                    {user?.full_name || user?.email}
+                  </span>
+                </div>
                 <button
                   onClick={handleLogout}
-                  className="p-2 rounded-md text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
-                  aria-label={t("logout")}
+                  className="p-2 rounded-xl text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                  title="Cerrar Sesión"
                 >
-                  <LogOut className="h-5 w-5" />
+                  <LogOut className="h-4 w-4" />
                 </button>
               </div>
             ) : (
               <div className="flex items-center gap-2">
                 <Link
                   href={`/${locale}/auth/login`}
-                  className="text-sm font-medium text-gray-600 hover:text-primary-600 transition-colors"
+                  className="text-xs font-semibold text-gray-600 hover:text-primary-600 px-3 py-1.5 rounded-lg transition-colors"
                 >
                   {t("login")}
                 </Link>
                 <Link
                   href={`/${locale}/auth/register`}
-                  className="px-3 py-1.5 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 transition-colors"
+                  className="px-3 py-1.5 bg-primary-600 text-white text-xs font-semibold rounded-xl hover:bg-primary-700 transition shadow-xs"
                 >
                   {t("register")}
                 </Link>
               </div>
             )}
-
-            {/* Mobile menu button */}
-            <button
-              onClick={() => setMobileOpen(!mobileOpen)}
-              className="md:hidden p-2 rounded-md text-gray-500 hover:text-primary-600"
-            >
-              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </button>
           </div>
         </div>
       </div>
-
-      {/* Mobile menu */}
-      {mobileOpen && (
-        <div className="md:hidden border-t border-gray-200 bg-white animate-slide-in">
-          <div className="px-4 py-3 space-y-1">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setMobileOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                  pathname === link.href
-                    ? "bg-primary-50 text-primary-700"
-                    : "text-gray-600 hover:text-primary-600 hover:bg-gray-50"
-                }`}
-              >
-                <link.icon className="h-4 w-4" />
-                {link.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-    </nav>
+    </header>
   );
 }

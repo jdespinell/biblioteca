@@ -34,9 +34,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Test DB connectivity on startup
     try:
         async with engine.begin() as conn:
-            await conn.execute(__import__("sqlalchemy").text("SELECT 1"))
             await conn.execute(__import__("sqlalchemy").text("ALTER TABLE user_books ADD COLUMN IF NOT EXISTS summary TEXT;"))
-        logger.info("✅ Database connection established and user_books.summary ensured")
+            # If no superuser exists yet, promote the first user to superuser
+            await conn.execute(
+                __import__("sqlalchemy").text("""
+                    UPDATE users 
+                    SET is_superuser = true 
+                    WHERE id = (
+                        SELECT id FROM users ORDER BY created_at ASC LIMIT 1
+                    )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM users WHERE is_superuser = true
+                    );
+                """)
+            )
+        logger.info("✅ Database connection established, schema and superuser ensured")
     except Exception as e:
         logger.error("❌ Database connection failed: %s", e)
         raise

@@ -5,6 +5,7 @@ import { getMessages } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { routing } from "@/i18n/routing";
 import Nav from "@/components/layout/Nav";
+import BottomNav from "@/components/layout/BottomNav";
 import "@/app/globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -57,11 +58,12 @@ export default async function RootLayout({
     <html lang={locale} className="h-full">
       <body className={`${inter.className} h-full bg-gray-50 text-gray-900`}>
         <NextIntlClientProvider messages={messages}>
-          <div className="min-h-full">
+          <div className="min-h-full flex flex-col">
             <Nav />
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-28 sm:pb-24">
               {children}
             </main>
+            <BottomNav />
           </div>
         </NextIntlClientProvider>
       </body>
