@@ -54,7 +54,10 @@ export default function AddBookPage() {
   const router = useRouter();
 
   const [step, setStep] = useState<Step>("search");
+  const [searchMode, setSearchMode] = useState<"text" | "isbn">("text");
   const [query, setQuery] = useState("");
+  const [isbnInput, setIsbnInput] = useState("");
+  const isbnInputRef = useRef<HTMLInputElement>(null);
   const [searchResults, setSearchResults] = useState<GlobalBook[]>([]);
   const [selectedBook, setSelectedBook] = useState<GlobalBook | ISBNLookupResult | GlobalBookCreate | null>(null);
   const [isSearching, setIsSearching] = useState(false);
@@ -194,6 +197,12 @@ export default function AddBookPage() {
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const handleDirectISBNSearch = async () => {
+    const clean = isbnInput.replace(/[-\s]/g, "").trim();
+    if (!clean) return;
+    await handleISBNScan(clean);
   };
 
   const checkIfBookInLibrary = async (
@@ -699,29 +708,98 @@ export default function AddBookPage() {
 
       {step === "search" && (
         <div className="space-y-6">
-          {/* Search input */}
+          {/* Search input card */}
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-4">
-            <h2 className="font-semibold text-gray-800">Buscar por título, autor o código ISBN</h2>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Ej: Cien años de soledad o Gabriel García Márquez"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <h2 className="font-semibold text-gray-800">¿Cómo deseas buscar tu libro?</h2>
+              {/* Mode Switcher Tabs */}
+              <div className="flex bg-gray-100/90 p-1 rounded-xl gap-1">
+                <button
+                  type="button"
+                  onClick={() => setSearchMode("text")}
+                  className={`py-1.5 px-3 text-xs font-semibold rounded-lg transition-all ${
+                    searchMode === "text"
+                      ? "bg-white text-gray-900 shadow-xs"
+                      : "text-gray-500 hover:text-gray-900"
+                  }`}
+                >
+                  Título / Autor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchMode("isbn");
+                    setTimeout(() => isbnInputRef.current?.focus(), 50);
+                  }}
+                  className={`py-1.5 px-3 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                    searchMode === "isbn"
+                      ? "bg-white text-primary-700 shadow-xs font-bold"
+                      : "text-gray-500 hover:text-gray-900"
+                  }`}
+                >
+                  <span className="bg-primary-100 text-primary-800 text-[10px] font-mono font-bold px-1.5 py-0.2 rounded">123</span>
+                  Código ISBN
+                </button>
               </div>
-              <button
-                onClick={handleSearch}
-                disabled={isSearching}
-                className="px-4 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
-              >
-                {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              </button>
             </div>
+
+            {searchMode === "text" ? (
+              <div className="space-y-1.5">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Ej: Cien años de soledad o Gabriel García Márquez"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                      className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <button
+                    onClick={handleSearch}
+                    disabled={isSearching}
+                    className="px-4 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+                  >
+                    {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400">Busca por nombre o autor en catálogos y en tu biblioteca.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
+                      ISBN
+                    </div>
+                    <input
+                      ref={isbnInputRef}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9X-]*"
+                      placeholder="Ej: 9788524403118 (solo números)"
+                      value={isbnInput}
+                      onChange={(e) => setIsbnInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleDirectISBNSearch()}
+                      className="w-full pl-16 pr-4 py-2.5 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      autoFocus
+                    />
+                  </div>
+                  <button
+                    onClick={handleDirectISBNSearch}
+                    disabled={isSearching || !isbnInput.trim()}
+                    className="px-4 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 text-xs font-bold flex items-center gap-1.5 flex-shrink-0"
+                  >
+                    {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : "Buscar ISBN"}
+                  </button>
+                </div>
+                <p className="text-[11px] text-primary-700 font-medium flex items-center gap-1">
+                  <span>📱</span> Teclado numérico activado en tu móvil. Ingresa los 10 o 13 dígitos del código de barras.
+                </p>
+              </div>
+            )}
 
             {notFoundIsbn && (
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left shadow-sm">
@@ -773,30 +851,48 @@ export default function AddBookPage() {
             )}
 
             {/* Action buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-gray-100">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-3 border-t border-gray-100">
               <button
+                type="button"
                 onClick={() => setShowScanner(true)}
-                className="flex items-center justify-center gap-2 px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 hover:text-primary-600 hover:border-primary-200 transition-colors"
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs text-gray-700 hover:bg-gray-50 hover:text-primary-600 hover:border-primary-200 transition-colors font-medium text-center"
               >
-                <QrCode className="h-4 w-4" />
-                {t("scanISBN")}
+                <QrCode className="h-4 w-4 text-primary-600" />
+                <span>Escanear barras</span>
               </button>
               <button
+                type="button"
+                onClick={() => {
+                  setSearchMode("isbn");
+                  setTimeout(() => isbnInputRef.current?.focus(), 50);
+                }}
+                className={`flex items-center justify-center gap-1.5 px-3 py-2.5 border rounded-xl text-xs transition-colors font-medium text-center ${
+                  searchMode === "isbn"
+                    ? "border-primary-500 bg-primary-50/70 text-primary-700 font-bold ring-2 ring-primary-500/20"
+                    : "border-gray-200 text-gray-700 hover:bg-gray-50 hover:text-primary-600 hover:border-primary-200"
+                }`}
+              >
+                <span className="text-xs font-mono font-bold text-primary-600">123</span>
+                <span>Digitar ISBN</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowCapture(true)}
-                className="flex items-center justify-center gap-2 px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 hover:text-primary-600 hover:border-primary-200 transition-colors"
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-xs text-gray-700 hover:bg-gray-50 hover:text-primary-600 hover:border-primary-200 transition-colors font-medium text-center"
               >
-                <Camera className="h-4 w-4" />
-                {t("scanCover")}
+                <Camera className="h-4 w-4 text-primary-600" />
+                <span>Foto portada</span>
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setErrorMessage(null);
                   setStep("manual");
                 }}
-                className="flex items-center justify-center gap-2 px-3 py-2.5 border border-dashed border-primary-300 bg-primary-50/40 rounded-lg text-sm text-primary-700 hover:bg-primary-50 hover:border-primary-400 transition-colors font-medium"
+                className="flex items-center justify-center gap-1.5 px-3 py-2.5 border border-dashed border-primary-300 bg-primary-50/40 rounded-xl text-xs text-primary-700 hover:bg-primary-50 hover:border-primary-400 transition-colors font-medium text-center"
               >
                 <Edit3 className="h-4 w-4" />
-                Ingreso manual
+                <span>Ingreso manual</span>
               </button>
             </div>
           </div>
@@ -901,10 +997,12 @@ export default function AddBookPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">ISBN (opcional)</label>
                 <input
                   type="text"
-                  placeholder="Ej: 9780307474728"
+                  inputMode="numeric"
+                  pattern="[0-9X-]*"
+                  placeholder="Ej: 9788524403118 (solo números)"
                   value={manualIsbn}
                   onChange={(e) => setManualIsbn(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full px-3.5 py-2.5 border border-gray-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
               </div>
             </div>

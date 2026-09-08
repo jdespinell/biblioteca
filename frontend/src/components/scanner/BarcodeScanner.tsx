@@ -465,10 +465,12 @@ export default function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps)
               <form onSubmit={handleManualSubmit} className="flex gap-2">
                 <input
                   type="text"
+                  inputMode="numeric"
+                  pattern="[0-9X-]*"
                   value={manualIsbn}
                   onChange={(e) => setManualIsbn(e.target.value)}
-                  placeholder="Ej: 9789500731234"
-                  className="flex-1 px-3 py-1.5 text-xs border rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                  placeholder="Ej: 9788524403118 (solo números)"
+                  className="flex-1 px-3 py-1.5 text-xs font-mono border rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none"
                   autoFocus
                 />
                 <button
