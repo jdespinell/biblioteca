@@ -77,6 +77,28 @@ export default function AddBookPage() {
   const [catalogCoverUrl, setCatalogCoverUrl] = useState<string | null>(null);
   const [activeCoverSource, setActiveCoverSource] = useState<"photo" | "catalog">("photo");
   const [hasCrossReferenced, setHasCrossReferenced] = useState(false);
+  const [isUpdatingExistingCover, setIsUpdatingExistingCover] = useState(false);
+
+  const handleUpdateExistingBookCover = async () => {
+    if (!existingLibraryBook) return;
+    const chosenCover =
+      activeCoverSource === "photo" && photoCoverUrl
+        ? photoCoverUrl
+        : selectedBook?.cover_url || photoCoverUrl;
+    if (!chosenCover) return;
+    setIsUpdatingExistingCover(true);
+    try {
+      await booksApi.update(existingLibraryBook.global_book.id, {
+        cover_url: chosenCover,
+      });
+      router.push(`/${locale}/book/${existingLibraryBook.global_book.id}`);
+    } catch (e) {
+      console.error("Error updating existing book cover:", e);
+      setErrorMessage("No se pudo actualizar la portada del libro existente.");
+    } finally {
+      setIsUpdatingExistingCover(false);
+    }
+  };
 
   // AI Summary State
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -174,10 +196,15 @@ export default function AddBookPage() {
     }
   };
 
-  const checkIfBookInLibrary = async (title?: string | null, isbn?: string | null): Promise<UserBook | null> => {
+  const checkIfBookInLibrary = async (
+    title?: string | null,
+    isbn?: string | null,
+    author?: string | null
+  ): Promise<UserBook | null> => {
     if (!title && !isbn) return null;
     try {
-      const userBooks = await userBooksApi.list({ search: title || undefined, limit: 10 });
+      // Fetch user's library (up to 500 books) for thorough in-memory comparison
+      const userBooks = await userBooksApi.list({ limit: 500 });
       if (!userBooks || userBooks.length === 0) return null;
 
       const normalize = (s?: string | null) =>
@@ -185,22 +212,64 @@ export default function AddBookPage() {
           .toLowerCase()
           .normalize("NFD")
           .replace(/[\u0300-\u036f]/g, "")
-          .replace(/[^a-z0-9]/g, "")
+          .replace(/[^a-z0-9\s]/g, " ")
+          .replace(/\s+/g, " ")
           .trim();
 
-      const cleanIsbn = (isbn || "").replace(/[-\s]/g, "");
+      const cleanIsbn = (isbn || "").replace(/[-\s]/g, "").trim();
       const recTitleNorm = normalize(title);
+      const recAuthorNorm = normalize(author);
 
       for (const ub of userBooks) {
-        const ubIsbn = (ub.global_book.isbn || "").replace(/[-\s]/g, "");
-        const ubIsbn13 = (ub.global_book.isbn13 || "").replace(/[-\s]/g, "");
-        if (cleanIsbn && (ubIsbn === cleanIsbn || ubIsbn13 === cleanIsbn)) {
-          return ub;
-        }
-        const ubTitleNorm = normalize(ub.global_book.title);
-        if (recTitleNorm.length >= 3 && ubTitleNorm.length >= 3) {
-          if (ubTitleNorm === recTitleNorm || ubTitleNorm.includes(recTitleNorm) || recTitleNorm.includes(ubTitleNorm)) {
+        const ubIsbn = (ub.global_book.isbn || "").replace(/[-\s]/g, "").trim();
+        const ubIsbn13 = (ub.global_book.isbn13 || "").replace(/[-\s]/g, "").trim();
+
+        // 1. ISBN matching
+        if (cleanIsbn && cleanIsbn.length >= 9) {
+          if (
+            ubIsbn === cleanIsbn ||
+            ubIsbn13 === cleanIsbn ||
+            (cleanIsbn.length === 10 && ubIsbn13.endsWith(cleanIsbn.slice(0, 9))) ||
+            (ubIsbn.length === 10 && cleanIsbn.endsWith(ubIsbn.slice(0, 9)))
+          ) {
             return ub;
+          }
+        }
+
+        // 2. Title & Author matching
+        const ubTitleNorm = normalize(ub.global_book.title);
+        const ubAuthorNorm = normalize(ub.global_book.author);
+
+        if (recTitleNorm && ubTitleNorm) {
+          // Exact title match
+          if (recTitleNorm === ubTitleNorm) {
+            return ub;
+          }
+
+          // Substring title match if meaningful length
+          if (
+            (recTitleNorm.length >= 5 && ubTitleNorm.includes(recTitleNorm)) ||
+            (ubTitleNorm.length >= 5 && recTitleNorm.includes(ubTitleNorm))
+          ) {
+            return ub;
+          }
+
+          // Word token overlap: if >= 2 words match and ratio >= 60%
+          const recWords = recTitleNorm.split(" ").filter((w) => w.length >= 3);
+          const ubWords = ubTitleNorm.split(" ").filter((w) => w.length >= 3);
+          if (recWords.length >= 2 && ubWords.length >= 2) {
+            const matchingWords = recWords.filter((w) => ubWords.includes(w));
+            const overlapRatio = matchingWords.length / Math.min(recWords.length, ubWords.length);
+            if (overlapRatio >= 0.6) {
+              if (recAuthorNorm && ubAuthorNorm) {
+                const authorWords = recAuthorNorm.split(" ").filter((w) => w.length >= 3);
+                const ubAuthorWords = ubAuthorNorm.split(" ").filter((w) => w.length >= 3);
+                const authorMatch = authorWords.some((w) => ubAuthorWords.includes(w));
+                if (authorMatch) return ub;
+              } else {
+                return ub;
+              }
+            }
           }
         }
       }
@@ -218,8 +287,8 @@ export default function AddBookPage() {
     setExistingLibraryBook(null);
 
     try {
-      // 1. Check if user already owns this book
-      const libraryMatch = await checkIfBookInLibrary(null, isbn);
+      // 1. Check if user already owns this book by ISBN
+      let libraryMatch = await checkIfBookInLibrary(null, isbn);
       if (libraryMatch) {
         setExistingLibraryBook(libraryMatch);
       }
@@ -228,8 +297,8 @@ export default function AddBookPage() {
       const result = await booksApi.lookupISBN(isbn);
       if (result.found) {
         if (!libraryMatch && result.title) {
-          const matchWithTitle = await checkIfBookInLibrary(result.title, isbn);
-          if (matchWithTitle) setExistingLibraryBook(matchWithTitle);
+          libraryMatch = await checkIfBookInLibrary(result.title, isbn, result.author);
+          if (libraryMatch) setExistingLibraryBook(libraryMatch);
         }
         setSelectedBook(result);
         setStep("confirm");
@@ -360,8 +429,8 @@ export default function AddBookPage() {
     setActiveCoverSource(coverImage ? "photo" : "catalog");
 
     try {
-      // 1. Check if user already owns this book in their library
-      const libraryMatch = await checkIfBookInLibrary(result.title, result.isbn);
+      // 1. Check if user already owns this book in their library using recognized data
+      let libraryMatch = await checkIfBookInLibrary(result.title, result.isbn, result.author);
       if (libraryMatch) {
         setExistingLibraryBook(libraryMatch);
       }
@@ -418,6 +487,19 @@ export default function AddBookPage() {
       }
 
       if (bestMatch) {
+        // Re-check library with catalog's official title, ISBN, and author if not matched yet
+        if (!libraryMatch) {
+          const catalogMatch = await checkIfBookInLibrary(
+            bestMatch.title,
+            bestMatch.isbn || bestMatch.isbn13 || result.isbn,
+            bestMatch.author
+          );
+          if (catalogMatch) {
+            libraryMatch = catalogMatch;
+            setExistingLibraryBook(catalogMatch);
+          }
+        }
+
         setHasCrossReferenced(true);
         setCatalogCoverUrl(bestMatch.cover_url || null);
         setCrossReferencedBooks(externalMatches);
@@ -451,6 +533,13 @@ export default function AddBookPage() {
         setManualDescription(mergedBook.description || "");
         if (chosenCover) setManualCoverUrl(chosenCover);
       } else {
+        if (!libraryMatch) {
+          const checkAgain = await checkIfBookInLibrary(result.title, result.isbn, result.author);
+          if (checkAgain) {
+            setExistingLibraryBook(checkAgain);
+          }
+        }
+
         setHasCrossReferenced(false);
         setCatalogCoverUrl(null);
         setCrossReferencedBooks([]);
@@ -479,8 +568,13 @@ export default function AddBookPage() {
     }
   };
 
-  const handleSelectBook = (book: GlobalBook) => {
+  const handleSelectBook = async (book: GlobalBook) => {
     setSelectedBook(book);
+    setExistingLibraryBook(null);
+    const libraryMatch = await checkIfBookInLibrary(book.title, book.isbn || book.isbn13, book.author);
+    if (libraryMatch) {
+      setExistingLibraryBook(libraryMatch);
+    }
     setStep("confirm");
   };
 
@@ -492,13 +586,18 @@ export default function AddBookPage() {
     setTagInput("");
   };
 
-  const handleManualSubmit = (e: React.FormEvent) => {
+  const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualTitle.trim() || !manualAuthor.trim()) {
       setErrorMessage("El título y el autor son obligatorios.");
       return;
     }
     setErrorMessage(null);
+    setExistingLibraryBook(null);
+    const libraryMatch = await checkIfBookInLibrary(manualTitle.trim(), manualIsbn.trim(), manualAuthor.trim());
+    if (libraryMatch) {
+      setExistingLibraryBook(libraryMatch);
+    }
     const bookData: GlobalBookCreate = {
       title: manualTitle.trim(),
       author: manualAuthor.trim(),
@@ -517,6 +616,12 @@ export default function AddBookPage() {
 
   const handleConfirm = async () => {
     if (!selectedBook) return;
+    if (existingLibraryBook) {
+      setErrorMessage(
+        `Este libro ya está en tu biblioteca ('${existingLibraryBook.global_book.title}'). Puedes ver tu copia registrada o actualizar su portada con el botón correspondiente.`
+      );
+      return;
+    }
     setIsAdding(true);
     setErrorMessage(null);
 
@@ -960,6 +1065,21 @@ export default function AddBookPage() {
                       <BookOpen className="h-3.5 w-3.5" />
                       Ver mi copia registrada
                     </Link>
+                    {(photoCoverUrl || selectedBook.cover_url) && (
+                      <button
+                        type="button"
+                        onClick={handleUpdateExistingBookCover}
+                        disabled={isUpdatingExistingCover}
+                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                      >
+                        {isUpdatingExistingCover ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Camera className="h-3.5 w-3.5" />
+                        )}
+                        Actualizar portada de mi libro con esta foto
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setExistingLibraryBook(null)}
@@ -970,6 +1090,38 @@ export default function AddBookPage() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Missing Cover Photo Banner - Prominent prompt when book has no cover */}
+          {!selectedBook.cover_url && (
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-600 flex-shrink-0">
+                  <Camera className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-blue-200 text-blue-900 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                      Sin portada
+                    </span>
+                    <h4 className="text-sm font-bold text-gray-900">
+                      ¿Quieres tomar una foto de la portada?
+                    </h4>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                    Este libro no incluye foto de portada en los catálogos. Puedes fotografiar tu libro ahora mismo antes de guardarlo.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => coverInputRef.current?.click()}
+                className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 flex-shrink-0 cursor-pointer"
+              >
+                <Camera className="h-4 w-4" />
+                Tomar foto de portada
+              </button>
             </div>
           )}
 

@@ -362,6 +362,23 @@ export default function BookPage({ params }: BookPageProps) {
             )}
           </div>
 
+          {/* Cover photo action button */}
+          <div>
+            <button
+              type="button"
+              onClick={() => coverInputRef.current?.click()}
+              disabled={isUpdatingCover}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors border border-blue-200 shadow-xs cursor-pointer"
+            >
+              {isUpdatingCover ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Camera className="h-3.5 w-3.5" />
+              )}
+              {book.cover_url ? "Cambiar foto de portada" : "Tomar o agregar foto de portada"}
+            </button>
+          </div>
+
           {/* User's copy management */}
           {userBook ? (
             <div className="pt-5 border-t border-gray-100 space-y-5">

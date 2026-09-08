@@ -4,7 +4,7 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
@@ -157,7 +157,8 @@ async def create_user_book(
     book_result = await db.execute(
         select(GlobalBook).where(GlobalBook.id == body.global_book_id)
     )
-    if not book_result.scalar_one_or_none():
+    target_book = book_result.scalar_one_or_none()
+    if not target_book:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="GlobalBook not found",
@@ -177,6 +178,39 @@ async def create_user_book(
                 detail="Location not found",
             )
 
+    # Check if user already owns this book (by global_book_id, title+author, or ISBN)
+    dup_conditions = [UserBook.global_book_id == body.global_book_id]
+    if target_book.title and target_book.author:
+        dup_conditions.append(
+            and_(
+                func.lower(func.trim(GlobalBook.title)) == target_book.title.strip().lower(),
+                func.lower(func.trim(GlobalBook.author)) == target_book.author.strip().lower(),
+            )
+        )
+    if target_book.isbn:
+        clean_isbn = target_book.isbn.strip().replace("-", "").replace(" ", "")
+        dup_conditions.extend([GlobalBook.isbn == clean_isbn, GlobalBook.isbn13 == clean_isbn])
+    if target_book.isbn13:
+        clean_isbn13 = target_book.isbn13.strip().replace("-", "").replace(" ", "")
+        dup_conditions.extend([GlobalBook.isbn == clean_isbn13, GlobalBook.isbn13 == clean_isbn13])
+
+    existing_dup = await db.execute(
+        select(UserBook)
+        .join(UserBook.global_book)
+        .where(
+            UserBook.user_id == current_user.id,
+            or_(*dup_conditions),
+        )
+        .options(selectinload(UserBook.global_book))
+    )
+    existing_ub = existing_dup.scalars().first()
+    if existing_ub:
+        dup_title = existing_ub.global_book.title if existing_ub.global_book else target_book.title
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Ya tienes este libro ('{dup_title}') en tu biblioteca.",
+        )
+
     user_book = UserBook(
         user_id=current_user.id,
         global_book_id=body.global_book_id,
@@ -192,7 +226,7 @@ async def create_user_book(
     except IntegrityError:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This book is already in your library",
+            detail=f"Ya tienes este libro ('{target_book.title}') en tu biblioteca.",
         )
 
     # Add tags

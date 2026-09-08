@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, HTTPException, Query, status
-from sqlalchemy import or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.dependencies import CurrentUser, DBSession
@@ -196,6 +196,7 @@ async def create_book(
         clean_isbn13 = None
 
     # Check for existing book by ISBN in catalog (reuse if already present)
+    existing_book = None
     if clean_isbn or clean_isbn13:
         conditions = []
         if clean_isbn:
@@ -205,27 +206,53 @@ async def create_book(
 
         existing = await db.execute(select(GlobalBook).where(or_(*conditions)))
         existing_book = existing.scalar_one_or_none()
-        if existing_book:
-            updated = False
-            # Update cover if provided
-            if body.cover_url and (not existing_book.cover_url or existing_book.cover_url != body.cover_url):
-                existing_book.cover_url = body.cover_url
-                updated = True
-            # Update missing ISBNs
-            if clean_isbn and not existing_book.isbn:
-                existing_book.isbn = clean_isbn
-                updated = True
-            if clean_isbn13 and not existing_book.isbn13:
-                existing_book.isbn13 = clean_isbn13
-                updated = True
-            # Update description if better
-            if body.description and (not existing_book.description or len(body.description) > len(existing_book.description)):
-                existing_book.description = body.description
-                updated = True
-            if updated:
-                db.add(existing_book)
-                await db.flush()
-            return GlobalBookResponse.model_validate(existing_book)
+
+    # If not found by ISBN, check for existing book by title and author (normalized)
+    if not existing_book and body.title and body.author:
+        norm_title = body.title.strip().lower()
+        norm_author = body.author.strip().lower()
+        res_title_author = await db.execute(
+            select(GlobalBook).where(
+                func.lower(func.trim(GlobalBook.title)) == norm_title,
+                func.lower(func.trim(GlobalBook.author)) == norm_author,
+            )
+        )
+        existing_book = res_title_author.scalar_one_or_none()
+
+    if existing_book:
+        updated = False
+        # Update cover if provided and existing has none or different
+        if body.cover_url and (not existing_book.cover_url or existing_book.cover_url != body.cover_url):
+            existing_book.cover_url = body.cover_url
+            updated = True
+        # Update missing ISBNs
+        if clean_isbn and not existing_book.isbn:
+            existing_book.isbn = clean_isbn
+            updated = True
+        if clean_isbn13 and not existing_book.isbn13:
+            existing_book.isbn13 = clean_isbn13
+            updated = True
+        # Update description if better/longer
+        if body.description and (not existing_book.description or len(body.description) > len(existing_book.description)):
+            existing_book.description = body.description
+            updated = True
+        # Update publisher if missing
+        if body.publisher and not existing_book.publisher:
+            existing_book.publisher = body.publisher
+            updated = True
+        # Update published_year if missing
+        if body.published_year and not existing_book.published_year:
+            existing_book.published_year = body.published_year
+            updated = True
+        # Update page_count if missing
+        if body.page_count and not existing_book.page_count:
+            existing_book.page_count = body.page_count
+            updated = True
+
+        if updated:
+            db.add(existing_book)
+            await db.flush()
+        return GlobalBookResponse.model_validate(existing_book)
 
     book_dict = body.model_dump()
     book_dict["isbn"] = clean_isbn
@@ -255,4 +282,5 @@ async def update_book(
         setattr(book, field, value)
 
     db.add(book)
+    await db.flush()
     return GlobalBookResponse.model_validate(book)
