@@ -17,14 +17,24 @@ USER_AGENT = "BibliotecaApp/1.0 (https://biblioteca.juliancloud.site; mailto:adm
 
 async def lookup_isbn(isbn: str) -> ISBNLookupResponse:
     """
-    Fetch book metadata:
-    1. Open Library (bibkeys + /isbn/ endpoint with User-Agent)
-    2. Google Books (q=isbn:... and q=... with 429 rate limit tolerance)
-    3. Gemini AI (bibliographic database identification fallback)
+    Fetch book metadata in cascade:
+    1. BrasilAPI (official CBL / Mercosul database for Brazilian/Portuguese books)
+    2. Open Library (bibkeys + /isbn/ endpoint with User-Agent)
+    3. Google Books (q=isbn:... and q=... with 429 rate limit tolerance)
+    4. BrasilAPI general fallback
     """
-    clean_isbn = isbn.replace("-", "").replace(" ", "")
+    clean_isbn = isbn.replace("-", "").replace(" ", "").strip()
 
-    # ── 1. Try Open Library ──────────────────────────────────────────────────
+    # ── 1. If Brazilian / Portuguese ISBN (prefix 85, 65, 97885, 97865), try BrasilAPI first ──
+    if clean_isbn.startswith(("97885", "97865", "85", "65")):
+        try:
+            result = await _lookup_brasilapi(clean_isbn)
+            if result.found:
+                return result
+        except Exception as e:
+            logger.warning("BrasilAPI lookup failed for ISBN %s: %s", isbn, e)
+
+    # ── 2. Try Open Library ──────────────────────────────────────────────────
     try:
         result = await _lookup_open_library(clean_isbn)
         if result.found:
@@ -32,7 +42,7 @@ async def lookup_isbn(isbn: str) -> ISBNLookupResponse:
     except Exception as e:
         logger.warning("Open Library lookup failed for ISBN %s: %s", isbn, e)
 
-    # ── 2. Fallback: Google Books ────────────────────────────────────────────
+    # ── 3. Fallback: Google Books ────────────────────────────────────────────
     try:
         result = await _lookup_google_books(clean_isbn)
         if result.found:
@@ -40,17 +50,58 @@ async def lookup_isbn(isbn: str) -> ISBNLookupResponse:
     except Exception as e:
         logger.warning("Google Books lookup failed for ISBN %s: %s", isbn, e)
 
-    # ── 3. Fallback: Gemini AI ───────────────────────────────────────────────
-    if settings.GEMINI_API_KEY:
-        try:
-            ai_result = await gemini_service.identify_book_by_isbn(clean_isbn)
-            if ai_result and ai_result.found:
-                logger.info("Book successfully identified via Gemini AI for ISBN %s: %s", clean_isbn, ai_result.title)
-                return ai_result
-        except Exception as e:
-            logger.warning("Gemini ISBN identification failed for %s: %s", clean_isbn, e)
+    # ── 4. Try BrasilAPI for any other ISBN ──────────────────────────────────
+    try:
+        result = await _lookup_brasilapi(clean_isbn)
+        if result.found:
+            return result
+    except Exception as e:
+        logger.warning("BrasilAPI general fallback failed for ISBN %s: %s", isbn, e)
 
+    # Note: We intentionally DO NOT ask LLMs to guess ISBN numbers blindly,
+    # because language models lack a deterministic ISBN catalog and hallucinate
+    # incorrect book titles from 13-digit numbers. Returning found=False allows
+    # the user to enter the title manually or photograph the cover.
     return ISBNLookupResponse(isbn=clean_isbn, found=False)
+
+
+async def _lookup_brasilapi(isbn: str) -> ISBNLookupResponse:
+    """
+    Fetch book metadata from BrasilAPI (official CBL / Mercosul database).
+    Covers Brazilian & Portuguese books (e.g. ISBNs starting with 85, 65, 97885, 97865).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                f"https://brasilapi.com.br/api/isbn/v1/{isbn}",
+                headers={"User-Agent": USER_AGENT},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                title = data.get("title")
+                if title:
+                    subtitle = data.get("subtitle")
+                    full_title = f"{title}: {subtitle}" if subtitle else title
+                    authors = data.get("authors", [])
+                    author_str = ", ".join(authors) if isinstance(authors, list) else (str(authors) if authors else "")
+                    return ISBNLookupResponse(
+                        isbn=isbn if len(isbn) == 10 else None,
+                        isbn13=isbn if len(isbn) == 13 else None,
+                        title=full_title,
+                        author=author_str,
+                        publisher=data.get("publisher"),
+                        published_year=data.get("year"),
+                        page_count=data.get("page_count"),
+                        description=data.get("synopsis"),
+                        cover_url=data.get("cover_url"),
+                        language="pt",
+                        source="openlibrary",
+                        found=True,
+                    )
+    except Exception as e:
+        logger.warning("BrasilAPI query failed for ISBN %s: %s", isbn, e)
+
+    return ISBNLookupResponse(isbn=isbn, found=False)
 
 
 async def _lookup_open_library(isbn: str) -> ISBNLookupResponse:
