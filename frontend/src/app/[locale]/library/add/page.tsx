@@ -15,12 +15,15 @@ import {
   MapPin,
   X,
   Sparkles,
+  AlertTriangle,
+  Check,
+  Layers,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { booksApi, type GlobalBook, type ISBNLookupResult, type GlobalBookCreate } from "@/lib/api/books";
-import { userBooksApi } from "@/lib/api/user-books";
+import { userBooksApi, type UserBook } from "@/lib/api/user-books";
 import { locationsApi, type Location } from "@/lib/api/locations";
 import { aiApi } from "@/lib/api/ai";
 import BookSummaryViewer from "@/components/book/BookSummaryViewer";
@@ -56,6 +59,15 @@ export default function AddBookPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [notFoundIsbn, setNotFoundIsbn] = useState<string | null>(null);
+
+  // Cross-referencing & duplicate check state
+  const [isCrossReferencing, setIsCrossReferencing] = useState(false);
+  const [existingLibraryBook, setExistingLibraryBook] = useState<UserBook | null>(null);
+  const [crossReferencedBooks, setCrossReferencedBooks] = useState<GlobalBook[]>([]);
+  const [photoCoverUrl, setPhotoCoverUrl] = useState<string | null>(null);
+  const [catalogCoverUrl, setCatalogCoverUrl] = useState<string | null>(null);
+  const [activeCoverSource, setActiveCoverSource] = useState<"photo" | "catalog">("photo");
+  const [hasCrossReferenced, setHasCrossReferenced] = useState(false);
 
   // AI Summary State
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -153,14 +165,63 @@ export default function AddBookPage() {
     }
   };
 
+  const checkIfBookInLibrary = async (title?: string | null, isbn?: string | null): Promise<UserBook | null> => {
+    if (!title && !isbn) return null;
+    try {
+      const userBooks = await userBooksApi.list({ search: title || undefined, limit: 10 });
+      if (!userBooks || userBooks.length === 0) return null;
+
+      const normalize = (s?: string | null) =>
+        (s || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9]/g, "")
+          .trim();
+
+      const cleanIsbn = (isbn || "").replace(/[-\s]/g, "");
+      const recTitleNorm = normalize(title);
+
+      for (const ub of userBooks) {
+        const ubIsbn = (ub.global_book.isbn || "").replace(/[-\s]/g, "");
+        const ubIsbn13 = (ub.global_book.isbn13 || "").replace(/[-\s]/g, "");
+        if (cleanIsbn && (ubIsbn === cleanIsbn || ubIsbn13 === cleanIsbn)) {
+          return ub;
+        }
+        const ubTitleNorm = normalize(ub.global_book.title);
+        if (recTitleNorm.length >= 3 && ubTitleNorm.length >= 3) {
+          if (ubTitleNorm === recTitleNorm || ubTitleNorm.includes(recTitleNorm) || recTitleNorm.includes(ubTitleNorm)) {
+            return ub;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Could not check user library for duplicates", e);
+    }
+    return null;
+  };
+
   const handleISBNScan = async (isbn: string) => {
     setShowScanner(false);
     setIsSearching(true);
     setErrorMessage(null);
     setNotFoundIsbn(null);
+    setExistingLibraryBook(null);
+
     try {
+      // 1. Check if user already owns this book
+      const libraryMatch = await checkIfBookInLibrary(null, isbn);
+      if (libraryMatch) {
+        setExistingLibraryBook(libraryMatch);
+      }
+
+      // 2. Lookup in catalog
       const result = await booksApi.lookupISBN(isbn);
       if (result.found) {
+        if (!libraryMatch && result.title) {
+          const matchWithTitle = await checkIfBookInLibrary(result.title, isbn);
+          if (matchWithTitle) setExistingLibraryBook(matchWithTitle);
+        }
         setSelectedBook(result);
         setStep("confirm");
       } else {
@@ -175,7 +236,50 @@ export default function AddBookPage() {
     }
   };
 
-  const handleCoverResult = (
+  const handleSwitchCover = (source: "photo" | "catalog") => {
+    setActiveCoverSource(source);
+    const chosenUrl = source === "photo" ? photoCoverUrl : catalogCoverUrl;
+    if (selectedBook && chosenUrl) {
+      setSelectedBook({
+        ...selectedBook,
+        cover_url: chosenUrl,
+      });
+      setManualCoverUrl(chosenUrl);
+    }
+  };
+
+  const handleSelectAlternativeMatch = (altBook: GlobalBook) => {
+    setCatalogCoverUrl(altBook.cover_url || null);
+    const chosenCover = activeCoverSource === "photo" && photoCoverUrl ? photoCoverUrl : (altBook.cover_url || photoCoverUrl);
+
+    const merged: GlobalBookCreate = {
+      title: altBook.title,
+      author: altBook.author,
+      publisher: altBook.publisher || undefined,
+      isbn: altBook.isbn || altBook.isbn13 || undefined,
+      published_year: altBook.published_year || undefined,
+      page_count: altBook.page_count || undefined,
+      description: altBook.description || undefined,
+      language: altBook.language || "es",
+      cover_url: chosenCover || undefined,
+      source: altBook.source || "manual",
+    };
+    if ("id" in altBook && altBook.id) {
+      (merged as any).id = altBook.id;
+    }
+
+    setSelectedBook(merged);
+    setManualTitle(merged.title);
+    setManualAuthor(merged.author);
+    setManualPublisher(merged.publisher || "");
+    setManualIsbn(merged.isbn || "");
+    setManualYear(merged.published_year ? String(merged.published_year) : "");
+    setManualPages(merged.page_count ? String(merged.page_count) : "");
+    setManualDescription(merged.description || "");
+    if (chosenCover) setManualCoverUrl(chosenCover);
+  };
+
+  const handleCoverResult = async (
     result: {
       title: string | null;
       author: string | null;
@@ -191,27 +295,132 @@ export default function AddBookPage() {
       return;
     }
 
-    // Directly populate the book data from the recognized photo
-    const bookData: GlobalBookCreate = {
-      title: result.title || "Título no identificado",
-      author: result.author || "Autor desconocido",
-      publisher: result.publisher || undefined,
-      isbn: result.isbn || undefined,
-      cover_url: coverImage || undefined,
-      language: "es",
-      source: "ai",
-    };
+    setIsCrossReferencing(true);
+    setErrorMessage(null);
+    setExistingLibraryBook(null);
+    setCrossReferencedBooks([]);
+    setPhotoCoverUrl(coverImage || null);
+    setCatalogCoverUrl(null);
+    setActiveCoverSource(coverImage ? "photo" : "catalog");
 
-    // Pre-populate manual form in case the user wants to adjust details
-    setManualTitle(bookData.title);
-    setManualAuthor(bookData.author);
-    setManualPublisher(result.publisher || "");
-    setManualIsbn(result.isbn || "");
-    if (coverImage) setManualCoverUrl(coverImage);
+    try {
+      // 1. Check if user already owns this book in their library
+      const libraryMatch = await checkIfBookInLibrary(result.title, result.isbn);
+      if (libraryMatch) {
+        setExistingLibraryBook(libraryMatch);
+      }
 
-    // Skip external search and go directly to confirm step
-    setSelectedBook(bookData);
-    setStep("confirm");
+      // 2. Cross-reference with Google Books and Open Library
+      const normalize = (s?: string | null) =>
+        (s || "")
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9]/g, "")
+          .trim();
+
+      const recTitleNorm = normalize(result.title);
+      const cleanIsbn = (result.isbn || "").replace(/[-\s]/g, "");
+
+      let externalMatches: GlobalBook[] = [];
+
+      // Query by ISBN first if detected
+      if (cleanIsbn) {
+        try {
+          const isbnRes = await booksApi.lookupISBN(cleanIsbn);
+          if (isbnRes && isbnRes.found) {
+            externalMatches.push(isbnRes as any);
+          }
+        } catch (e) {
+          console.warn("ISBN lookup during cover cross-reference failed", e);
+        }
+      }
+
+      // Query by Title and Author
+      if (result.title) {
+        try {
+          const query = `${result.title} ${result.author || ""}`.trim();
+          const searchRes = await booksApi.search(query, 5);
+          if (searchRes && searchRes.length > 0) {
+            for (const b of searchRes) {
+              if (!externalMatches.some((em) => em.title.toLowerCase() === b.title.toLowerCase())) {
+                externalMatches.push(b);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("Search during cover cross-reference failed", e);
+        }
+      }
+
+      let bestMatch: GlobalBook | null = null;
+      if (externalMatches.length > 0) {
+        bestMatch = externalMatches.find((b) => {
+          const bTitle = normalize(b.title);
+          return bTitle === recTitleNorm || bTitle.includes(recTitleNorm) || recTitleNorm.includes(bTitle);
+        }) || externalMatches[0];
+      }
+
+      if (bestMatch) {
+        setHasCrossReferenced(true);
+        setCatalogCoverUrl(bestMatch.cover_url || null);
+        setCrossReferencedBooks(externalMatches);
+
+        const chosenCover = coverImage || bestMatch.cover_url;
+
+        const mergedBook: GlobalBookCreate = {
+          title: bestMatch.title || result.title || "Título no identificado",
+          author: bestMatch.author || result.author || "Autor desconocido",
+          publisher: bestMatch.publisher || result.publisher || undefined,
+          isbn: bestMatch.isbn || bestMatch.isbn13 || result.isbn || undefined,
+          published_year: bestMatch.published_year || undefined,
+          page_count: bestMatch.page_count || undefined,
+          description: bestMatch.description || undefined,
+          language: bestMatch.language || "es",
+          cover_url: chosenCover || undefined,
+          source: bestMatch.source || "ai",
+        };
+
+        if ("id" in bestMatch && (bestMatch as any).id) {
+          (mergedBook as any).id = (bestMatch as any).id;
+        }
+
+        setSelectedBook(mergedBook);
+        setManualTitle(mergedBook.title);
+        setManualAuthor(mergedBook.author);
+        setManualPublisher(mergedBook.publisher || "");
+        setManualIsbn(mergedBook.isbn || "");
+        setManualYear(mergedBook.published_year ? String(mergedBook.published_year) : "");
+        setManualPages(mergedBook.page_count ? String(mergedBook.page_count) : "");
+        setManualDescription(mergedBook.description || "");
+        if (chosenCover) setManualCoverUrl(chosenCover);
+      } else {
+        setHasCrossReferenced(false);
+        setCatalogCoverUrl(null);
+        setCrossReferencedBooks([]);
+
+        const bookData: GlobalBookCreate = {
+          title: result.title || "Título no identificado",
+          author: result.author || "Autor desconocido",
+          publisher: result.publisher || undefined,
+          isbn: result.isbn || undefined,
+          cover_url: coverImage || undefined,
+          language: "es",
+          source: "ai",
+        };
+
+        setSelectedBook(bookData);
+        setManualTitle(bookData.title);
+        setManualAuthor(bookData.author);
+        setManualPublisher(result.publisher || "");
+        setManualIsbn(result.isbn || "");
+        if (coverImage) setManualCoverUrl(coverImage);
+      }
+
+      setStep("confirm");
+    } finally {
+      setIsCrossReferencing(false);
+    }
   };
 
   const handleSelectBook = (book: GlobalBook) => {
@@ -620,6 +829,192 @@ export default function AddBookPage() {
             </div>
           )}
 
+          {/* Library Duplicate Alert */}
+          {existingLibraryBook && (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 shadow-sm space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 flex-shrink-0 mt-0.5">
+                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-amber-200 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                      ¡Ya lo tienes!
+                    </span>
+                    <span className="text-xs text-amber-800 font-medium">Este libro ya está en tu biblioteca</span>
+                  </div>
+                  <h4 className="text-sm font-bold text-gray-900 mt-1 truncate">
+                    {existingLibraryBook.global_book.title}
+                  </h4>
+                  <p className="text-xs text-gray-600">
+                    {existingLibraryBook.global_book.author}
+                  </p>
+
+                  <div className="mt-2.5 flex flex-wrap gap-2 text-xs bg-white/80 p-2 rounded-lg border border-amber-200/60">
+                    <div>
+                      <span className="text-gray-500">Estado: </span>
+                      <span className="font-semibold text-gray-800 capitalize">
+                        {existingLibraryBook.status === "unread" ? "Por leer" : existingLibraryBook.status === "reading" ? "Leyendo" : existingLibraryBook.status === "read" ? "Leído" : "En lista de deseos"}
+                      </span>
+                    </div>
+                    {existingLibraryBook.location && (
+                      <>
+                        <span className="text-gray-300">•</span>
+                        <div>
+                          <span className="text-gray-500">Ubicación: </span>
+                          <span className="font-semibold text-gray-800">{existingLibraryBook.location.name}</span>
+                        </div>
+                      </>
+                    )}
+                    {existingLibraryBook.rating && (
+                      <>
+                        <span className="text-gray-300">•</span>
+                        <div>
+                          <span className="font-semibold text-amber-600">★ {existingLibraryBook.rating}/5</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                      href={`/${locale}/book/${existingLibraryBook.global_book.id}`}
+                      className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
+                    >
+                      <BookOpen className="h-3.5 w-3.5" />
+                      Ver mi copia registrada
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => setExistingLibraryBook(null)}
+                      className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 font-medium hover:bg-amber-100/60 rounded-xl transition-colors"
+                    >
+                      Continuar de todos modos
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Cross-reference success pill */}
+          {hasCrossReferenced && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-start gap-2.5">
+              <div className="w-6 h-6 rounded-md bg-emerald-100 flex items-center justify-center text-emerald-600 flex-shrink-0 mt-0.5">
+                <Sparkles className="h-3.5 w-3.5" />
+              </div>
+              <div className="flex-1 text-xs">
+                <p className="font-semibold text-emerald-900">
+                  Datos cruzados con Google Books y Open Library
+                </p>
+                <p className="text-emerald-700 mt-0.5 leading-relaxed">
+                  Completamos automáticamente la información oficial (año, páginas, sinopsis y portada de editorial).
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Cover Selector: Photo vs Official Catalog Cover */}
+          {photoCoverUrl && catalogCoverUrl && photoCoverUrl !== catalogCoverUrl && (
+            <div className="bg-gray-50 rounded-xl border border-gray-200 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-gray-700">
+                  ¿Qué portada prefieres guardar?
+                </label>
+                <span className="text-[11px] text-gray-500">Toca para elegir</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => handleSwitchCover("photo")}
+                  className={`flex items-center gap-2.5 p-2 rounded-xl border text-left transition-all ${
+                    activeCoverSource === "photo"
+                      ? "border-primary-600 bg-white shadow-sm ring-2 ring-primary-500/20"
+                      : "border-gray-200 bg-white/60 hover:bg-white text-gray-600"
+                  }`}
+                >
+                  <div className="relative w-9 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 shadow-xs">
+                    <Image src={photoCoverUrl} alt="Tu foto" fill unoptimized className="object-cover" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-gray-900 truncate">Tu foto</p>
+                    <p className="text-[10px] text-gray-500">De la cámara</p>
+                    {activeCoverSource === "photo" && (
+                      <span className="text-[10px] text-primary-700 font-bold flex items-center gap-0.5 mt-0.5">
+                        <Check className="h-3 w-3" /> Usando esta
+                      </span>
+                    )}
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSwitchCover("catalog")}
+                  className={`flex items-center gap-2.5 p-2 rounded-xl border text-left transition-all ${
+                    activeCoverSource === "catalog"
+                      ? "border-primary-600 bg-white shadow-sm ring-2 ring-primary-500/20"
+                      : "border-gray-200 bg-white/60 hover:bg-white text-gray-600"
+                  }`}
+                >
+                  <div className="relative w-9 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 shadow-xs">
+                    <Image src={catalogCoverUrl} alt="Portada oficial" fill unoptimized className="object-cover" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-gray-900 truncate">Oficial</p>
+                    <p className="text-[10px] text-gray-500">De editorial</p>
+                    {activeCoverSource === "catalog" && (
+                      <span className="text-[10px] text-primary-700 font-bold flex items-center gap-0.5 mt-0.5">
+                        <Check className="h-3 w-3" /> Usando esta
+                      </span>
+                    )}
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Alternative Catalog Matches */}
+          {crossReferencedBooks.length > 1 && (
+            <div className="bg-gray-50/70 rounded-xl border border-gray-200/80 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5 text-primary-600" />
+                  Otras ediciones encontradas en catálogo:
+                </span>
+                <span className="text-[10px] text-gray-400">({crossReferencedBooks.length} resultados)</span>
+              </div>
+              <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                {crossReferencedBooks.map((b, idx) => {
+                  const isCurrent = selectedBook.title === b.title && selectedBook.author === b.author;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSelectAlternativeMatch(b)}
+                      className={`w-full flex items-center justify-between p-2 rounded-lg text-left text-xs transition-colors ${
+                        isCurrent
+                          ? "bg-primary-50 text-primary-900 font-semibold border border-primary-200"
+                          : "bg-white hover:bg-gray-100 text-gray-700 border border-gray-100"
+                      }`}
+                    >
+                      <div className="min-w-0 flex-1 truncate pr-2">
+                        <span className="truncate">{b.title}</span>
+                        {b.published_year && (
+                          <span className="text-gray-400 font-normal ml-1">({b.published_year})</span>
+                        )}
+                      </div>
+                      {isCurrent ? (
+                        <span className="text-[10px] text-primary-700 font-bold">Seleccionado</span>
+                      ) : (
+                        <span className="text-[10px] text-gray-400 hover:text-primary-600">Elegir</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Book preview */}
           <div className="flex gap-4">
             <div className="relative w-20 h-28 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
@@ -867,7 +1262,23 @@ export default function AddBookPage() {
         </div>
       )}
 
-      {/* Modals */}
+      {/* Modals & Overlays */}
+      {isCrossReferencing && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-14 h-14 rounded-2xl bg-primary-50 mx-auto flex items-center justify-center text-primary-600 shadow-inner">
+              <Loader2 className="h-7 w-7 animate-spin text-primary-600" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-900 text-base">Cruzando información...</h3>
+              <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">
+                Verificando si ya tienes este libro en tu biblioteca y buscando datos oficiales en Google Books y Open Library.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showScanner && (
         <BarcodeScanner onScan={handleISBNScan} onClose={() => setShowScanner(false)} />
       )}
