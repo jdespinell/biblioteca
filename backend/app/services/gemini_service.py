@@ -40,7 +40,8 @@ Return ONLY valid JSON matching this exact schema — no markdown, no extra text
   "author": "string (author name as shown on cover)",
   "publisher": "string or null (publisher name if visible)",
   "isbn": "string or null (ISBN number if visible on cover or back)",
-  "confidence": number (your confidence in the extraction, between 0.0 and 1.0)
+  "confidence": number (your confidence in the extraction, between 0.0 and 1.0),
+  "box_2d": [ymin, xmin, ymax, xmax] (bounding box of the book cover in the image, normalized integers between 0 and 1000, or null if the entire image is already the book cover)
 }
 
 If any field is not visible or cannot be determined, use null for that field.
@@ -97,12 +98,21 @@ async def recognize_cover(
             raw_text = response.text.strip()
             parsed = json.loads(raw_text)
 
+            raw_box = parsed.get("box_2d")
+            box_2d = None
+            if isinstance(raw_box, list) and len(raw_box) == 4:
+                try:
+                    box_2d = [int(v) for v in raw_box]
+                except (ValueError, TypeError):
+                    box_2d = None
+
             return CoverRecognitionResponse(
                 title=parsed.get("title"),
                 author=parsed.get("author"),
                 publisher=parsed.get("publisher"),
                 isbn=parsed.get("isbn"),
                 confidence=float(parsed.get("confidence", 0.0)),
+                box_2d=box_2d,
             )
         except Exception as e:
             last_error = e

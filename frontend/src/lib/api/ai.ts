@@ -6,6 +6,7 @@ export interface CoverRecognitionResult {
   publisher: string | null;
   isbn: string | null;
   confidence: number;
+  box_2d?: [number, number, number, number] | null;
 }
 
 export type CoverRecognitionResponse = CoverRecognitionResult;

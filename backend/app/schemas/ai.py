@@ -19,6 +19,7 @@ class CoverRecognitionResponse(BaseModel):
     publisher: str | None = None
     isbn: str | None = None
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    box_2d: list[int] | None = None
 
 
 class ISBNLookupResponse(BaseModel):
