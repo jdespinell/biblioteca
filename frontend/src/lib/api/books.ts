@@ -27,7 +27,7 @@ export interface GlobalBookCreate {
   description?: string;
   published_year?: number;
   page_count?: number;
-  source?: "manual" | "openlibrary" | "googlebooks" | "ai";
+  source?: "manual" | "openlibrary" | "googlebooks" | "ai" | (string & {});
 }
 
 export interface ISBNLookupResult {

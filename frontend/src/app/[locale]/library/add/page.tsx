@@ -39,6 +39,14 @@ const CoverCapture = dynamic(
 );
 
 type Step = "search" | "manual" | "confirm" | "done";
+type BookSource = "manual" | "openlibrary" | "googlebooks" | "ai";
+
+const toValidSource = (src?: string | null): BookSource => {
+  if (src === "openlibrary" || src === "googlebooks" || src === "ai" || src === "manual") {
+    return src;
+  }
+  return "manual";
+};
 
 export default function AddBookPage() {
   const t = useTranslations("books");
@@ -310,7 +318,7 @@ export default function AddBookPage() {
       description: altBook.description || undefined,
       language: altBook.language || "es",
       cover_url: chosenCover || undefined,
-      source: altBook.source || "manual",
+      source: toValidSource(altBook.source),
     };
     if ("id" in altBook && altBook.id) {
       (merged as any).id = altBook.id;
@@ -426,7 +434,7 @@ export default function AddBookPage() {
           description: bestMatch.description || undefined,
           language: bestMatch.language || "es",
           cover_url: chosenCover || undefined,
-          source: bestMatch.source || "ai",
+          source: toValidSource(bestMatch.source),
         };
 
         if ("id" in bestMatch && (bestMatch as any).id) {
@@ -549,7 +557,7 @@ export default function AddBookPage() {
           cover_url: bookData.cover_url || undefined,
           published_year: bookData.published_year || undefined,
           page_count: bookData.page_count || undefined,
-          source: bookData.source || "manual",
+          source: toValidSource(bookData.source),
         });
         bookId = created.id;
       }
