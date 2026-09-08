@@ -29,15 +29,9 @@ import { userBooksApi, type UserBook, type BookStatus } from "@/lib/api/user-boo
 import { notesApi, socialApi, type BookNote, type PublicNote } from "@/lib/api/notes";
 import { locationsApi, type Location } from "@/lib/api/locations";
 import { useAuth } from "@/hooks/useAuth";
-import dynamic from "next/dynamic";
 import { useState } from "react";
-import CommunityNoteCard from "@/components/notes/CommunityNoteCard";
 import BookSummaryViewer from "@/components/book/BookSummaryViewer";
-
-const MarkdownEditor = dynamic(
-  () => import("@/components/editor/MarkdownEditor"),
-  { ssr: false }
-);
+import BookCommentsSection from "@/components/book/BookCommentsSection";
 
 interface BookPageProps {
   params: { id: string; locale: string };
@@ -119,7 +113,7 @@ export default function BookPage({ params }: BookPageProps) {
   );
 
   // 4. Public community notes
-  const { data: publicNotes } = useSWR(
+  const { data: publicNotes, mutate: mutatePublicNotes } = useSWR(
     ["public-notes", id],
     () => socialApi.getPublicNotes(id)
   );
@@ -129,11 +123,6 @@ export default function BookPage({ params }: BookPageProps) {
     isAuthenticated ? "locations" : null,
     locationsApi.list
   );
-
-  const handleSaveNote = async (content: string, isPublic: boolean) => {
-    const saved = await notesApi.upsertNote(id, { content, is_public: isPublic });
-    await mutateNote(saved, false);
-  };
 
   const handleStatusChange = async (newStatus: BookStatus) => {
     if (!userBook) return;
@@ -550,40 +539,16 @@ export default function BookPage({ params }: BookPageProps) {
         </div>
       </div>
 
-      {/* Markdown Notes Editor (Only for the book's owner) */}
-      {userBook && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8 space-y-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Mis Notas del Libro</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Tus notas admiten formato Markdown, fórmulas matemáticas KaTeX ($\LaTeX$) y guardado automático.
-            </p>
-          </div>
-          <MarkdownEditor
-            initialContent={myNote?.content ?? ""}
-            initialIsPublic={myNote?.is_public ?? false}
-            bookId={id}
-            onSave={handleSaveNote}
-          />
-        </div>
-      )}
-
-      {/* Public Community Notes */}
-      {publicNotes && publicNotes.length > 0 && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Globe className="h-5 w-5 text-primary-600" />
-            <h2 className="text-xl font-bold text-gray-900">
-              Notas de la Comunidad ({publicNotes.length})
-            </h2>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {publicNotes.map((note) => (
-              <CommunityNoteCard key={note.id} note={note} />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Social Comments & Community Notes Thread */}
+      <BookCommentsSection
+        bookId={id}
+        bookTitle={book.title}
+        myNote={myNote ?? null}
+        publicNotes={publicNotes}
+        userRating={userBook?.rating}
+        onMutateMyNote={mutateNote}
+        onMutatePublicNotes={mutatePublicNotes}
+      />
     </div>
   );
 }
