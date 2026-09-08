@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+import uuid
 from pydantic import BaseModel, Field
 
 
@@ -23,6 +22,7 @@ class CoverRecognitionResponse(BaseModel):
 
 
 class ISBNLookupResponse(BaseModel):
+    id: uuid.UUID | None = None
     isbn: str | None = None
     isbn13: str | None = None
     title: str | None = None

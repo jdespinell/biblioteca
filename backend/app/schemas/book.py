@@ -58,6 +58,7 @@ class GlobalBookSearchResult(BaseModel):
     """Lightweight response for search results."""
     id: uuid.UUID
     isbn: str | None
+    isbn13: str | None = None
     title: str
     author: str
     publisher: str | None = None

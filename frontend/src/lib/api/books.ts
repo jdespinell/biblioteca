@@ -31,6 +31,7 @@ export interface GlobalBookCreate {
 }
 
 export interface ISBNLookupResult {
+  id?: string | null;
   isbn: string | null;
   isbn13: string | null;
   title: string | null;

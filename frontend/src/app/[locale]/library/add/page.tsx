@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import {
@@ -52,6 +52,7 @@ export default function AddBookPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [showCapture, setShowCapture] = useState(false);
+  const coverInputRef = useRef<HTMLInputElement>(null);
   const [selectedStatus, setSelectedStatus] = useState<"unread" | "reading" | "read" | "wishlist">("unread");
   const [selectedLocationId, setSelectedLocationId] = useState<string>("");
   const [tags, setTags] = useState<string[]>([]);
@@ -234,6 +235,53 @@ export default function AddBookPage() {
     } finally {
       setIsSearching(false);
     }
+  };
+
+  const handleManualCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (!base64) return;
+
+      const img = new window.Image();
+      img.onload = () => {
+        const maxDim = 1200;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL("image/jpeg", 0.85);
+          setPhotoCoverUrl(compressed);
+          setActiveCoverSource("photo");
+          if (selectedBook) {
+            setSelectedBook({
+              ...selectedBook,
+              cover_url: compressed,
+            });
+          }
+          setManualCoverUrl(compressed);
+        }
+      };
+      img.src = base64;
+    };
+    reader.readAsDataURL(file);
+    if (e.target) e.target.value = "";
   };
 
   const handleSwitchCover = (source: "photo" | "catalog") => {
@@ -467,13 +515,33 @@ export default function AddBookPage() {
     try {
       let bookId: string;
 
+      const rawIsbn = (selectedBook as any).isbn;
+      const rawIsbn13 = (selectedBook as any).isbn13;
+      const cleanIsbn = rawIsbn ? String(rawIsbn).replace(/[-\s]/g, "").trim() : undefined;
+      const cleanIsbn13 = rawIsbn13 ? String(rawIsbn13).replace(/[-\s]/g, "").trim() : undefined;
+
+      const finalIsbn10 = cleanIsbn && cleanIsbn.length === 10 ? cleanIsbn : (cleanIsbn13 && cleanIsbn13.length === 10 ? cleanIsbn13 : undefined);
+      const finalIsbn13 = cleanIsbn13 && cleanIsbn13.length === 13 ? cleanIsbn13 : (cleanIsbn && cleanIsbn.length === 13 ? cleanIsbn : undefined);
+
       if ("id" in selectedBook && selectedBook.id) {
         bookId = selectedBook.id;
+        // Update cover and ISBN on existing GlobalBook if user added/changed cover
+        if (selectedBook.cover_url || finalIsbn10 || finalIsbn13) {
+          try {
+            await booksApi.update(bookId, {
+              cover_url: selectedBook.cover_url || undefined,
+              isbn: finalIsbn10,
+              isbn13: finalIsbn13,
+            });
+          } catch (e) {
+            console.warn("Could not update GlobalBook details:", e);
+          }
+        }
       } else {
         const bookData = selectedBook as GlobalBookCreate;
         const created = await booksApi.create({
-          isbn: bookData.isbn || undefined,
-          isbn13: (selectedBook as ISBNLookupResult).isbn13 || undefined,
+          isbn: finalIsbn10,
+          isbn13: finalIsbn13,
           title: bookData.title || "Título desconocido",
           author: bookData.author || "Autor desconocido",
           publisher: bookData.publisher || undefined,
@@ -1016,23 +1084,41 @@ export default function AddBookPage() {
           )}
 
           {/* Book preview */}
-          <div className="flex gap-4">
-            <div className="relative w-20 h-28 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
+          <div className="flex gap-4 items-start">
+            <div className="relative w-24 h-36 bg-gray-100 rounded-xl overflow-hidden flex-shrink-0 shadow-md border border-gray-200 group">
               {selectedBook.cover_url ? (
-                <Image
-                  src={selectedBook.cover_url}
-                  alt={selectedBook.title ?? ""}
-                  fill
-                  unoptimized={selectedBook.cover_url.startsWith("data:")}
-                  className="object-cover"
-                  sizes="80px"
-                />
+                <>
+                  <Image
+                    src={selectedBook.cover_url}
+                    alt={selectedBook.title ?? ""}
+                    fill
+                    unoptimized={selectedBook.cover_url.startsWith("data:")}
+                    className="object-cover"
+                    sizes="96px"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => coverInputRef.current?.click()}
+                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity p-1 text-center backdrop-blur-xs"
+                    title="Cambiar foto de portada"
+                  >
+                    <Camera className="h-5 w-5 mb-0.5" />
+                    <span className="text-[10px] font-bold">Cambiar foto</span>
+                  </button>
+                </>
               ) : (
-                <div className="absolute inset-0 bg-primary-50 flex items-center justify-center">
-                  <BookOpen className="h-8 w-8 text-primary-400" />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => coverInputRef.current?.click()}
+                  className="w-full h-full bg-gradient-to-br from-primary-50 to-primary-100/70 hover:bg-primary-100 flex flex-col items-center justify-center text-primary-600 p-2 text-center transition-colors border-2 border-dashed border-primary-300 hover:border-primary-500 rounded-xl"
+                  title="Tomar o subir foto de portada"
+                >
+                  <Camera className="h-7 w-7 mb-1 text-primary-500 animate-pulse" />
+                  <span className="text-[10px] font-bold leading-tight">Tomar foto de portada</span>
+                </button>
               )}
             </div>
+
             <div className="min-w-0 flex-1">
               <h2 className="text-lg font-bold text-gray-900 leading-tight">
                 {selectedBook.title ?? "Título desconocido"}
@@ -1041,18 +1127,46 @@ export default function AddBookPage() {
               {selectedBook.publisher && (
                 <p className="text-sm text-gray-400 mt-0.5">{selectedBook.publisher}</p>
               )}
-              {selectedBook.isbn && (
-                <p className="text-xs font-mono text-gray-400 mt-1">ISBN: {selectedBook.isbn}</p>
+
+              {/* ISBN badge */}
+              {((selectedBook as any).isbn || (selectedBook as any).isbn13) && (
+                <p className="text-xs font-mono text-gray-500 mt-1.5 flex items-center gap-1.5">
+                  <span className="bg-gray-100 text-gray-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-gray-200">
+                    ISBN
+                  </span>
+                  <span className="font-semibold text-gray-800">
+                    {(selectedBook as any).isbn13 || (selectedBook as any).isbn}
+                  </span>
+                </p>
               )}
-              {"source" in selectedBook && (selectedBook.source === "ai" || selectedBook.source === "manual") && (
+
+              {/* Action buttons */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => coverInputRef.current?.click()}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg bg-primary-50 hover:bg-primary-100 text-primary-700 transition-colors border border-primary-200 shadow-xs"
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                  {selectedBook.cover_url ? "Cambiar foto de portada" : "Tomar foto de portada"}
+                </button>
+                <input
+                  ref={coverInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={handleManualCoverUpload}
+                />
+
                 <button
                   type="button"
                   onClick={() => setStep("manual")}
-                  className="mt-2 text-xs text-primary-600 hover:text-primary-700 hover:underline flex items-center gap-1 font-medium"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 hover:text-gray-900 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors border border-gray-200"
                 >
-                  <Edit3 className="h-3 w-3" /> Editar datos del libro
+                  <Edit3 className="h-3.5 w-3.5" /> Editar datos
                 </button>
-              )}
+              </div>
             </div>
           </div>
 

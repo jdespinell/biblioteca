@@ -128,10 +128,13 @@ async def list_user_books(
         query = query.join(UserBook.tags).where(BookTag.tag.ilike(f"%{tag}%"))
 
     if search:
+        search_clean = search.strip().replace("-", "").replace(" ", "")
         query = query.join(UserBook.global_book).where(
             or_(
                 GlobalBook.title.ilike(f"%{search}%"),
                 GlobalBook.author.ilike(f"%{search}%"),
+                GlobalBook.isbn.ilike(f"%{search_clean}%"),
+                GlobalBook.isbn13.ilike(f"%{search_clean}%"),
             )
         )
 

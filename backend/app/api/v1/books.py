@@ -131,6 +131,7 @@ async def lookup_by_isbn(
 
     if book:
         return ISBNLookupResponse(
+            id=book.id,
             isbn=book.isbn,
             isbn13=book.isbn13,
             title=book.title,
@@ -181,26 +182,55 @@ async def create_book(
     db: DBSession,
 ) -> GlobalBookResponse:
     """
-    Create a new GlobalBook entry.
-    Returns 409 if ISBN already exists in the catalog.
+    Create a new GlobalBook entry or reuse/update existing by ISBN.
     """
+    # Normalize ISBN fields
+    clean_isbn = body.isbn.replace("-", "").replace(" ", "").strip() if body.isbn else None
+    clean_isbn13 = body.isbn13.replace("-", "").replace(" ", "").strip() if body.isbn13 else None
+
+    if clean_isbn and len(clean_isbn) == 13 and not clean_isbn13:
+        clean_isbn13 = clean_isbn
+        clean_isbn = None
+    elif clean_isbn13 and len(clean_isbn13) == 10 and not clean_isbn:
+        clean_isbn = clean_isbn13
+        clean_isbn13 = None
+
     # Check for existing book by ISBN in catalog (reuse if already present)
-    if body.isbn or body.isbn13:
+    if clean_isbn or clean_isbn13:
         conditions = []
-        if body.isbn:
-            conditions.append(GlobalBook.isbn == body.isbn)
-        if body.isbn13:
-            conditions.append(GlobalBook.isbn13 == body.isbn13)
+        if clean_isbn:
+            conditions.extend([GlobalBook.isbn == clean_isbn, GlobalBook.isbn13 == clean_isbn])
+        if clean_isbn13:
+            conditions.extend([GlobalBook.isbn == clean_isbn13, GlobalBook.isbn13 == clean_isbn13])
 
         existing = await db.execute(select(GlobalBook).where(or_(*conditions)))
         existing_book = existing.scalar_one_or_none()
         if existing_book:
+            updated = False
+            # Update cover if provided
+            if body.cover_url and (not existing_book.cover_url or existing_book.cover_url != body.cover_url):
+                existing_book.cover_url = body.cover_url
+                updated = True
+            # Update missing ISBNs
+            if clean_isbn and not existing_book.isbn:
+                existing_book.isbn = clean_isbn
+                updated = True
+            if clean_isbn13 and not existing_book.isbn13:
+                existing_book.isbn13 = clean_isbn13
+                updated = True
+            # Update description if better
             if body.description and (not existing_book.description or len(body.description) > len(existing_book.description)):
                 existing_book.description = body.description
+                updated = True
+            if updated:
                 db.add(existing_book)
+                await db.flush()
             return GlobalBookResponse.model_validate(existing_book)
 
-    book = GlobalBook(**body.model_dump())
+    book_dict = body.model_dump()
+    book_dict["isbn"] = clean_isbn
+    book_dict["isbn13"] = clean_isbn13
+    book = GlobalBook(**book_dict)
     db.add(book)
     await db.flush()
 

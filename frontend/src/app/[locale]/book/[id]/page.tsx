@@ -22,6 +22,7 @@ import {
   Check,
   X,
   FileText,
+  Camera,
 } from "lucide-react";
 import { booksApi } from "@/lib/api/books";
 import { aiApi } from "@/lib/api/ai";
@@ -29,7 +30,7 @@ import { userBooksApi, type UserBook, type BookStatus } from "@/lib/api/user-boo
 import { notesApi, socialApi, type BookNote, type PublicNote } from "@/lib/api/notes";
 import { locationsApi, type Location } from "@/lib/api/locations";
 import { useAuth } from "@/hooks/useAuth";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import BookSummaryViewer from "@/components/book/BookSummaryViewer";
 import BookCommentsSection from "@/components/book/BookCommentsSection";
 
@@ -53,8 +54,12 @@ export default function BookPage({ params }: BookPageProps) {
   const [summaryText, setSummaryText] = useState("");
   const [isSavingSummary, setIsSavingSummary] = useState(false);
 
+  // Cover upload state
+  const coverInputRef = useRef<HTMLInputElement>(null);
+  const [isUpdatingCover, setIsUpdatingCover] = useState(false);
+
   // 1. Global book details
-  const { data: book, isLoading: bookLoading } = useSWR(
+  const { data: book, isLoading: bookLoading, mutate: mutateBook } = useSWR(
     ["book", id],
     () => booksApi.getById(id)
   );
@@ -68,6 +73,54 @@ export default function BookPage({ params }: BookPageProps) {
   const userBook: UserBook | undefined = userBooks?.find(
     (ub) => ub.global_book.id === id
   );
+
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !book) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (!base64) return;
+
+      const img = new window.Image();
+      img.onload = async () => {
+        const maxDim = 1200;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL("image/jpeg", 0.85);
+          setIsUpdatingCover(true);
+          try {
+            await booksApi.update(book.id, { cover_url: compressed });
+            await mutateBook();
+            await mutateUserBooks();
+          } catch (err) {
+            console.error("Error updating cover:", err);
+          } finally {
+            setIsUpdatingCover(false);
+          }
+        }
+      };
+      img.src = base64;
+    };
+    reader.readAsDataURL(file);
+    if (e.target) e.target.value = "";
+  };
 
   const handleStartEditSummary = () => {
     setSummaryText(userBook?.summary ?? "");
@@ -219,22 +272,55 @@ export default function BookPage({ params }: BookPageProps) {
       {/* Book header card */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8 flex flex-col sm:flex-row gap-8">
         {/* Cover */}
-        <div className="relative w-40 sm:w-48 aspect-[2/3] flex-shrink-0 rounded-2xl overflow-hidden bg-gray-100 shadow-md self-center sm:self-start">
+        <div className="relative w-40 sm:w-48 aspect-[2/3] flex-shrink-0 rounded-2xl overflow-hidden bg-gray-100 shadow-md self-center sm:self-start group border border-gray-200">
           {book.cover_url ? (
-            <Image
-              src={book.cover_url}
-              alt={book.title}
-              fill
-              unoptimized={book.cover_url.startsWith("data:")}
-              className="object-cover"
-              sizes="192px"
-            />
+            <>
+              <Image
+                src={book.cover_url}
+                alt={book.title}
+                fill
+                unoptimized={book.cover_url.startsWith("data:")}
+                className="object-cover"
+                sizes="192px"
+              />
+              <button
+                type="button"
+                onClick={() => coverInputRef.current?.click()}
+                disabled={isUpdatingCover}
+                className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity p-2 text-center backdrop-blur-xs cursor-pointer"
+                title="Cambiar foto de portada"
+              >
+                {isUpdatingCover ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-white mb-1" />
+                ) : (
+                  <Camera className="h-6 w-6 mb-1" />
+                )}
+                <span className="text-xs font-bold">Cambiar portada</span>
+              </button>
+            </>
           ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100 text-primary-400 p-4 text-center">
-              <BookOpen className="h-16 w-16 mb-2" />
-              <span className="text-xs font-bold leading-tight">{book.title}</span>
-            </div>
+            <button
+              type="button"
+              onClick={() => coverInputRef.current?.click()}
+              disabled={isUpdatingCover}
+              className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100 text-primary-600 hover:bg-primary-100/90 p-4 text-center transition-colors cursor-pointer border-2 border-dashed border-primary-200"
+            >
+              {isUpdatingCover ? (
+                <Loader2 className="h-8 w-8 animate-spin text-primary-600 mb-2" />
+              ) : (
+                <Camera className="h-8 w-8 text-primary-500 mb-2 animate-pulse" />
+              )}
+              <span className="text-xs font-bold leading-tight">Tomar o subir foto de portada</span>
+            </button>
           )}
+          <input
+            ref={coverInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleCoverUpload}
+          />
         </div>
 
         {/* Info & metadata */}
@@ -250,6 +336,12 @@ export default function BookPage({ params }: BookPageProps) {
           </div>
 
           <div className="flex flex-wrap gap-2 text-xs">
+            {(book.isbn || book.isbn13) && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-100 text-gray-800 font-mono text-xs border border-gray-200">
+                <span className="font-bold text-gray-500">ISBN:</span>
+                <span className="font-semibold">{book.isbn13 || book.isbn}</span>
+              </span>
+            )}
             {book.published_year && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-gray-100 text-gray-600">
                 <Calendar className="h-3.5 w-3.5" />
@@ -266,11 +358,6 @@ export default function BookPage({ params }: BookPageProps) {
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-gray-100 text-gray-600">
                 <Globe className="h-3.5 w-3.5" />
                 {book.language.toUpperCase()}
-              </span>
-            )}
-            {book.isbn && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-gray-100 font-mono text-gray-600">
-                ISBN: {book.isbn}
               </span>
             )}
           </div>
