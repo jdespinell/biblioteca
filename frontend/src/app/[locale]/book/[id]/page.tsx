@@ -106,10 +106,10 @@ export default function BookPage({ params }: BookPageProps) {
     }
   };
 
-  // 3. User's personal note
-  const { data: myNote, mutate: mutateNote } = useSWR<BookNote | null>(
-    isAuthenticated && userBook ? ["my-note", id] : null,
-    () => notesApi.getMyNote(id)
+  // 3. User's personal notes & comments
+  const { data: myNotes, mutate: mutateMyNotes } = useSWR<BookNote[]>(
+    isAuthenticated ? ["my-notes", id] : null,
+    () => notesApi.getMyNotes(id)
   );
 
   // 4. Public community notes
@@ -543,10 +543,10 @@ export default function BookPage({ params }: BookPageProps) {
       <BookCommentsSection
         bookId={id}
         bookTitle={book.title}
-        myNote={myNote ?? null}
-        publicNotes={publicNotes}
+        myNotes={myNotes ?? []}
+        publicNotes={publicNotes ?? []}
         userRating={userBook?.rating}
-        onMutateMyNote={mutateNote}
+        onMutateMyNotes={mutateMyNotes}
         onMutatePublicNotes={mutatePublicNotes}
       />
     </div>

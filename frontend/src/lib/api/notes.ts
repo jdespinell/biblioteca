@@ -4,8 +4,10 @@ export interface BookNote {
   id: string;
   user_id: string;
   global_book_id: string;
+  parent_id?: string | null;
   content: string;
   is_public: boolean;
+  author_display_name?: string;
   created_at: string;
   updated_at: string;
 }
@@ -13,6 +15,7 @@ export interface BookNote {
 export interface PublicNote {
   id: string;
   global_book_id: string;
+  parent_id?: string | null;
   content: string;
   author_display_name: string;
   created_at: string;
@@ -30,22 +33,33 @@ export interface DiscoverNote {
   book_cover_url: string | null;
 }
 
+export interface CreateNoteData {
+  content: string;
+  is_public: boolean;
+  parent_id?: string | null;
+}
+
+export interface UpdateNoteData {
+  content?: string;
+  is_public?: boolean;
+}
+
 export const notesApi = {
-  getMyNote: (bookId: string) =>
-    api.get<BookNote | null>(`/v1/notes/book/${bookId}`),
+  getMyNotes: (bookId: string) =>
+    api.get<BookNote[]>(`/v1/notes/book/${bookId}`),
 
-  upsertNote: (bookId: string, data: { content: string; is_public: boolean }) =>
-    api.put<BookNote>(`/v1/notes/book/${bookId}`, data),
+  createNote: (bookId: string, data: CreateNoteData) =>
+    api.post<BookNote>(`/v1/notes/book/${bookId}`, data),
 
-  updateNote: (bookId: string, data: { content?: string; is_public?: boolean }) =>
-    api.patch<BookNote>(`/v1/notes/book/${bookId}`, data),
+  updateNote: (noteId: string, data: UpdateNoteData) =>
+    api.patch<BookNote>(`/v1/notes/${noteId}`, data),
 
-  deleteNote: (bookId: string) =>
-    api.delete<void>(`/v1/notes/book/${bookId}`),
+  deleteNote: (noteId: string) =>
+    api.delete<void>(`/v1/notes/${noteId}`),
 };
 
 export const socialApi = {
-  getPublicNotes: (bookId: string, limit = 20, offset = 0) =>
+  getPublicNotes: (bookId: string, limit = 50, offset = 0) =>
     api.get<PublicNote[]>(
       `/v1/social/notes/${bookId}?limit=${limit}&offset=${offset}`
     ),

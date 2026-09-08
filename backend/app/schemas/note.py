@@ -9,12 +9,13 @@ from pydantic import BaseModel, Field
 # ── Request schemas ───────────────────────────────────────────────────────────
 
 class BookNoteCreate(BaseModel):
-    content: str = Field(default="", max_length=100_000)
-    is_public: bool = False  # Privacy by default
+    content: str = Field(min_length=1, max_length=100_000)
+    is_public: bool = True  # Social comment by default
+    parent_id: uuid.UUID | None = None  # Reply to another comment
 
 
 class BookNoteUpdate(BaseModel):
-    content: str | None = Field(default=None, max_length=100_000)
+    content: str | None = Field(default=None, min_length=1, max_length=100_000)
     is_public: bool | None = None
 
 
@@ -24,8 +25,10 @@ class BookNoteResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     global_book_id: uuid.UUID
+    parent_id: uuid.UUID | None = None
     content: str
     is_public: bool
+    author_display_name: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -34,13 +37,14 @@ class BookNoteResponse(BaseModel):
 
 class BookNotePublicResponse(BaseModel):
     """
-    Response for public discovery feed.
+    Response for public book comments and discussion.
     Does NOT expose user_id — only display name for privacy.
     """
     id: uuid.UUID
     global_book_id: uuid.UUID
+    parent_id: uuid.UUID | None = None
     content: str
-    author_display_name: str  # Injected from user.full_name or 'Reader'
+    author_display_name: str
     created_at: datetime
     updated_at: datetime
 

@@ -47,6 +47,7 @@ async def get_public_notes_for_book(
         BookNotePublicResponse(
             id=note.id,
             global_book_id=note.global_book_id,
+            parent_id=note.parent_id,
             content=note.content,
             author_display_name=full_name or _ANONYMOUS_DISPLAY,
             created_at=note.created_at,

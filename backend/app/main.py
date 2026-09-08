@@ -35,6 +35,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         async with engine.begin() as conn:
             await conn.execute(__import__("sqlalchemy").text("ALTER TABLE user_books ADD COLUMN IF NOT EXISTS summary TEXT;"))
+            await conn.execute(__import__("sqlalchemy").text("ALTER TABLE book_notes DROP CONSTRAINT IF EXISTS uq_book_notes_user_book;"))
+            await conn.execute(__import__("sqlalchemy").text("ALTER TABLE book_notes ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES book_notes(id) ON DELETE CASCADE;"))
             # If no superuser exists yet, promote the first user to superuser
             await conn.execute(
                 __import__("sqlalchemy").text("""
