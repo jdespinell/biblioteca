@@ -55,6 +55,7 @@ export default function AddBookPage() {
   const [tagInput, setTagInput] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [notFoundIsbn, setNotFoundIsbn] = useState<string | null>(null);
 
   // AI Summary State
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
@@ -124,6 +125,7 @@ export default function AddBookPage() {
     if (!clean) return;
     setIsSearching(true);
     setErrorMessage(null);
+    setNotFoundIsbn(null);
     try {
       const cleanIsbn = clean.replace(/[-\s]/g, "");
       if (/^(97[89])?\d{9}[\dX]$/i.test(cleanIsbn)) {
@@ -131,6 +133,10 @@ export default function AddBookPage() {
         if (result.found) {
           setSelectedBook(result);
           setStep("confirm");
+          return;
+        } else {
+          setManualIsbn(cleanIsbn);
+          setNotFoundIsbn(cleanIsbn);
           return;
         }
       }
@@ -151,13 +157,15 @@ export default function AddBookPage() {
     setShowScanner(false);
     setIsSearching(true);
     setErrorMessage(null);
+    setNotFoundIsbn(null);
     try {
       const result = await booksApi.lookupISBN(isbn);
       if (result.found) {
         setSelectedBook(result);
         setStep("confirm");
       } else {
-        setErrorMessage(`No se encontró ningún libro para el ISBN: ${isbn}. Puedes crearlo manualmente.`);
+        setManualIsbn(isbn);
+        setNotFoundIsbn(isbn);
       }
     } catch (e) {
       console.error("ISBN scan error:", e);
@@ -325,7 +333,50 @@ export default function AddBookPage() {
               </button>
             </div>
 
-            {errorMessage && (
+            {notFoundIsbn && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left shadow-sm">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 flex-shrink-0 mt-0.5">
+                    <BookOpen className="h-5 w-5" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-gray-900 text-sm">
+                      Libro no indexado en bases públicas externas
+                    </h4>
+                    <p className="text-xs text-gray-600 mt-1 leading-relaxed">
+                      El ISBN <strong>{notFoundIsbn}</strong> existe en tu libro, pero Open Library y Google Books no tienen esta edición registrada (frecuente en editoriales de España y Latinoamérica).
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setManualIsbn(notFoundIsbn);
+                          setStep("manual");
+                          setNotFoundIsbn(null);
+                        }}
+                        className="px-3.5 py-2 bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
+                      >
+                        <Plus className="h-4 w-4" />
+                        Registrar libro con este ISBN
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCapture(true);
+                          setNotFoundIsbn(null);
+                        }}
+                        className="px-3.5 py-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 text-xs font-semibold rounded-xl shadow-sm transition-colors flex items-center gap-1.5"
+                      >
+                        <Camera className="h-4 w-4 text-primary-600" />
+                        Tomar foto a la portada (detectar con IA)
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {errorMessage && !notFoundIsbn && (
               <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 text-sm">
                 {errorMessage}
               </div>

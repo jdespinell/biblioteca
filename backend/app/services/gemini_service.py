@@ -7,7 +7,7 @@ import logging
 import google.generativeai as genai
 
 from app.core.config import settings
-from app.schemas.ai import CoverRecognitionResponse
+from app.schemas.ai import CoverRecognitionResponse, ISBNLookupResponse
 
 logger = logging.getLogger(__name__)
 
@@ -159,3 +159,69 @@ Sé elocuente y no agregues introducciones innecesarias."""
 
     logger.error("All candidate Gemini models failed for summarization. Last error: %s", last_error)
     return ""
+
+
+_ISBN_IDENTIFY_PROMPT = """You are a bibliographic database system.
+A user is searching for a book with this ISBN: {isbn}
+
+If you know with certainty which book corresponds to this ISBN (or what book title and author are associated with it), return ONLY valid JSON matching this exact schema:
+{{
+  "title": "string (official book title)",
+  "author": "string (author or authors)",
+  "publisher": "string or null (publisher name)",
+  "published_year": number or null (year published, e.g. 2018),
+  "page_count": number or null,
+  "language": "string (e.g. 'es', 'en')",
+  "description": "string or null (concise synopsis in Spanish)",
+  "found": true
+}}
+
+If you do NOT know the exact book for this ISBN, return ONLY:
+{{
+  "found": false
+}}
+"""
+
+
+async def identify_book_by_isbn(isbn: str) -> ISBNLookupResponse | None:
+    """
+    Use Gemini to identify book bibliographic details from an ISBN when external APIs fail.
+    """
+    if not settings.GEMINI_API_KEY:
+        return None
+
+    models_to_try = _get_candidate_models()
+    for model_name in models_to_try:
+        try:
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                generation_config=genai.GenerationConfig(
+                    response_mime_type="application/json",
+                    temperature=0.1,
+                ),
+            )
+            response = await model.generate_content_async(
+                _ISBN_IDENTIFY_PROMPT.format(isbn=isbn)
+            )
+            raw = response.text.strip()
+            data = json.loads(raw)
+            if data.get("found") and data.get("title"):
+                return ISBNLookupResponse(
+                    isbn=isbn if len(isbn) == 10 else None,
+                    isbn13=isbn if len(isbn) == 13 else None,
+                    title=data["title"],
+                    author=data.get("author", "Autor desconocido"),
+                    publisher=data.get("publisher"),
+                    published_year=data.get("published_year"),
+                    page_count=data.get("page_count"),
+                    language=data.get("language", "es"),
+                    description=data.get("description"),
+                    cover_url=None,
+                    source="ai",
+                    found=True,
+                )
+            return None
+        except Exception as e:
+            logger.warning("Gemini model '%s' failed for ISBN identification: %s", model_name, e)
+
+    return None

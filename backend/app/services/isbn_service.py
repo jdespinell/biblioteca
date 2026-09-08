@@ -6,22 +6,25 @@ import httpx
 
 from app.core.config import settings
 from app.schemas.ai import ISBNLookupResponse
+from app.services import gemini_service
 
 logger = logging.getLogger(__name__)
 
 OPEN_LIBRARY_URL = "https://openlibrary.org/api/books"
 GOOGLE_BOOKS_URL = "https://www.googleapis.com/books/v1/volumes"
+USER_AGENT = "BibliotecaApp/1.0 (https://biblioteca.juliancloud.site; mailto:admin@juliancloud.site)"
 
 
 async def lookup_isbn(isbn: str) -> ISBNLookupResponse:
     """
-    Fetch book metadata from Open Library (primary) or Google Books (fallback).
-    Returns an ISBNLookupResponse with found=True if data was retrieved.
+    Fetch book metadata:
+    1. Open Library (bibkeys + /isbn/ endpoint with User-Agent)
+    2. Google Books (q=isbn:... and q=... with 429 rate limit tolerance)
+    3. Gemini AI (bibliographic database identification fallback)
     """
-    # Strip hyphens from ISBN
     clean_isbn = isbn.replace("-", "").replace(" ", "")
 
-    # ── Try Open Library first ────────────────────────────────────────────────
+    # ── 1. Try Open Library ──────────────────────────────────────────────────
     try:
         result = await _lookup_open_library(clean_isbn)
         if result.found:
@@ -29,7 +32,7 @@ async def lookup_isbn(isbn: str) -> ISBNLookupResponse:
     except Exception as e:
         logger.warning("Open Library lookup failed for ISBN %s: %s", isbn, e)
 
-    # ── Fallback: Google Books ────────────────────────────────────────────────
+    # ── 2. Fallback: Google Books ────────────────────────────────────────────
     try:
         result = await _lookup_google_books(clean_isbn)
         if result.found:
@@ -37,123 +40,187 @@ async def lookup_isbn(isbn: str) -> ISBNLookupResponse:
     except Exception as e:
         logger.warning("Google Books lookup failed for ISBN %s: %s", isbn, e)
 
+    # ── 3. Fallback: Gemini AI ───────────────────────────────────────────────
+    if settings.GEMINI_API_KEY:
+        try:
+            ai_result = await gemini_service.identify_book_by_isbn(clean_isbn)
+            if ai_result and ai_result.found:
+                logger.info("Book successfully identified via Gemini AI for ISBN %s: %s", clean_isbn, ai_result.title)
+                return ai_result
+        except Exception as e:
+            logger.warning("Gemini ISBN identification failed for %s: %s", clean_isbn, e)
+
     return ISBNLookupResponse(isbn=clean_isbn, found=False)
 
 
 async def _lookup_open_library(isbn: str) -> ISBNLookupResponse:
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(
-            OPEN_LIBRARY_URL,
-            params={
-                "bibkeys": f"ISBN:{isbn}",
-                "format": "json",
-                "jscmd": "data",
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    # 1. Try legacy bibkeys endpoint
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                OPEN_LIBRARY_URL,
+                params={
+                    "bibkeys": f"ISBN:{isbn}",
+                    "format": "json",
+                    "jscmd": "data",
+                },
+                headers={"User-Agent": USER_AGENT},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                key = f"ISBN:{isbn}"
+                if key in data:
+                    book = data[key]
+                    authors = book.get("authors", [])
+                    author_str = ", ".join(a.get("name", "") for a in authors) if authors else ""
+                    publishers = book.get("publishers", [])
+                    publisher_str = publishers[0].get("name", "") if publishers else None
+                    covers = book.get("cover", {})
+                    cover_url = covers.get("large") or covers.get("medium") or covers.get("small")
 
-    key = f"ISBN:{isbn}"
-    if key not in data:
-        return ISBNLookupResponse(isbn=isbn, found=False)
+                    publish_date = book.get("publish_date", "")
+                    published_year: int | None = None
+                    if publish_date:
+                        import re
+                        year_match = re.search(r"\b(\d{4})\b", publish_date)
+                        if year_match:
+                            published_year = int(year_match.group(1))
 
-    book = data[key]
+                    desc = book.get("description", {}).get("value") if isinstance(
+                        book.get("description"), dict
+                    ) else book.get("description")
 
-    # Parse author(s)
-    authors = book.get("authors", [])
-    author_str = ", ".join(a.get("name", "") for a in authors) if authors else ""
+                    return ISBNLookupResponse(
+                        isbn=isbn if len(isbn) == 10 else None,
+                        isbn13=isbn if len(isbn) == 13 else None,
+                        title=book.get("title", ""),
+                        author=author_str,
+                        publisher=publisher_str,
+                        cover_url=cover_url,
+                        description=desc,
+                        published_year=published_year,
+                        page_count=book.get("number_of_pages"),
+                        source="openlibrary",
+                        found=True,
+                    )
+    except Exception as e:
+        logger.warning("Open Library bibkeys endpoint failed for %s: %s", isbn, e)
 
-    # Parse publisher
-    publishers = book.get("publishers", [])
-    publisher_str = publishers[0].get("name", "") if publishers else None
+    # 2. Try direct /isbn/{isbn}.json endpoint
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(
+                f"https://openlibrary.org/isbn/{isbn}.json",
+                headers={"User-Agent": USER_AGENT},
+                follow_redirects=True,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                title = data.get("title")
+                if title:
+                    publishers = data.get("publishers", [])
+                    publisher_str = publishers[0] if publishers else None
 
-    # Parse cover
-    covers = book.get("cover", {})
-    cover_url = covers.get("large") or covers.get("medium") or covers.get("small")
+                    publish_date = data.get("publish_date", "")
+                    published_year: int | None = None
+                    if publish_date:
+                        import re
+                        year_match = re.search(r"\b(\d{4})\b", publish_date)
+                        if year_match:
+                            published_year = int(year_match.group(1))
 
-    # Parse year
-    publish_date = book.get("publish_date", "")
-    published_year: int | None = None
-    if publish_date:
-        import re
-        year_match = re.search(r"\b(\d{4})\b", publish_date)
-        if year_match:
-            published_year = int(year_match.group(1))
+                    return ISBNLookupResponse(
+                        isbn=isbn if len(isbn) == 10 else None,
+                        isbn13=isbn if len(isbn) == 13 else None,
+                        title=title,
+                        author="",
+                        publisher=publisher_str,
+                        cover_url=f"https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg",
+                        published_year=published_year,
+                        page_count=data.get("number_of_pages"),
+                        source="openlibrary",
+                        found=True,
+                    )
+    except Exception as e:
+        logger.warning("Open Library /isbn/ endpoint failed for %s: %s", isbn, e)
 
-    return ISBNLookupResponse(
-        isbn=isbn if len(isbn) == 10 else None,
-        isbn13=isbn if len(isbn) == 13 else None,
-        title=book.get("title", ""),
-        author=author_str,
-        publisher=publisher_str,
-        cover_url=cover_url,
-        description=book.get("description", {}).get("value") if isinstance(
-            book.get("description"), dict
-        ) else book.get("description"),
-        published_year=published_year,
-        page_count=book.get("number_of_pages"),
-        source="openlibrary",
-        found=True,
-    )
+    return ISBNLookupResponse(isbn=isbn, found=False)
 
 
 async def _lookup_google_books(isbn: str) -> ISBNLookupResponse:
-    params: dict[str, str] = {"q": f"isbn:{isbn}"}
-    if settings.GOOGLE_BOOKS_API_KEY:
-        params["key"] = settings.GOOGLE_BOOKS_API_KEY
+    queries = [f"isbn:{isbn}", isbn]
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(
-            GOOGLE_BOOKS_URL,
-            params=params,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    for q_term in queries:
+        params: dict[str, str] = {"q": q_term}
+        if settings.GOOGLE_BOOKS_API_KEY:
+            params["key"] = settings.GOOGLE_BOOKS_API_KEY
 
-    items = data.get("items", [])
-    if not items:
-        return ISBNLookupResponse(isbn=isbn, found=False)
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.get(
+                    GOOGLE_BOOKS_URL,
+                    params=params,
+                    headers={"User-Agent": USER_AGENT},
+                )
 
-    volume_info = items[0].get("volumeInfo", {})
+                if resp.status_code == 429:
+                    logger.warning("Google Books rate limit (429) hit for query '%s'", q_term)
+                    break
 
-    # Parse ISBN identifiers
-    isbn10: str | None = None
-    isbn13: str | None = None
-    for identifier in volume_info.get("industryIdentifiers", []):
-        if identifier.get("type") == "ISBN_10":
-            isbn10 = identifier.get("identifier")
-        elif identifier.get("type") == "ISBN_13":
-            isbn13 = identifier.get("identifier")
+                if resp.status_code != 200:
+                    continue
 
-    authors = volume_info.get("authors", [])
-    author_str = ", ".join(authors) if authors else ""
+                data = resp.json()
+                items = data.get("items", [])
+                if not items:
+                    continue
 
-    image_links = volume_info.get("imageLinks", {})
-    cover_url = (
-        image_links.get("large")
-        or image_links.get("medium")
-        or image_links.get("thumbnail")
-    )
-    # Google Books returns http, upgrade to https
-    if cover_url:
-        cover_url = cover_url.replace("http://", "https://")
+                volume_info = items[0].get("volumeInfo", {})
+                isbn10: str | None = None
+                isbn13: str | None = None
+                for identifier in volume_info.get("industryIdentifiers", []):
+                    if identifier.get("type") == "ISBN_10":
+                        isbn10 = identifier.get("identifier")
+                    elif identifier.get("type") == "ISBN_13":
+                        isbn13 = identifier.get("identifier")
 
-    return ISBNLookupResponse(
-        isbn=isbn10,
-        isbn13=isbn13,
-        title=volume_info.get("title", ""),
-        author=author_str,
-        publisher=volume_info.get("publisher"),
-        language=volume_info.get("language"),
-        cover_url=cover_url,
-        description=volume_info.get("description"),
-        published_year=int(volume_info["publishedDate"][:4])
-        if volume_info.get("publishedDate")
-        else None,
-        page_count=volume_info.get("pageCount"),
-        source="googlebooks",
-        found=True,
-    )
+                authors = volume_info.get("authors", [])
+                author_str = ", ".join(authors) if authors else ""
+
+                image_links = volume_info.get("imageLinks", {})
+                cover_url = (
+                    image_links.get("large")
+                    or image_links.get("medium")
+                    or image_links.get("thumbnail")
+                )
+                if cover_url:
+                    cover_url = cover_url.replace("http://", "https://")
+
+                pub_date = volume_info.get("publishedDate", "")
+                published_year = (
+                    int(pub_date[:4])
+                    if pub_date and len(pub_date) >= 4 and pub_date[:4].isdigit()
+                    else None
+                )
+
+                return ISBNLookupResponse(
+                    isbn=isbn10 or (isbn if len(isbn) == 10 else None),
+                    isbn13=isbn13 or (isbn if len(isbn) == 13 else None),
+                    title=volume_info.get("title", ""),
+                    author=author_str,
+                    publisher=volume_info.get("publisher"),
+                    language=volume_info.get("language"),
+                    cover_url=cover_url,
+                    description=volume_info.get("description"),
+                    published_year=published_year,
+                    page_count=volume_info.get("pageCount"),
+                    source="googlebooks",
+                    found=True,
+                )
+        except Exception as e:
+            logger.warning("Google Books query '%s' failed: %s", q_term, e)
+
+    return ISBNLookupResponse(isbn=isbn, found=False)
 
 
 OPEN_LIBRARY_SEARCH_URL = "https://openlibrary.org/search.json"
