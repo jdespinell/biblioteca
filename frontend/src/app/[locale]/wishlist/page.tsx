@@ -1,19 +1,50 @@
 "use client";
 
+import { useState } from "react";
 import useSWR, { mutate } from "swr";
 import { useLocale, useTranslations } from "next-intl";
-import { Heart, ShoppingCart, Loader2, BookOpen } from "lucide-react";
+import { Heart, ShoppingCart, Loader2, BookOpen, Trash2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { userBooksApi, type UserBook } from "@/lib/api/user-books";
 
-function WishlistCard({ userBook, onAcquired }: { userBook: UserBook; onAcquired: (id: string) => void }) {
+function WishlistCard({
+  userBook,
+  onAcquired,
+  onDelete,
+}: {
+  userBook: UserBook;
+  onAcquired: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
   const locale = useLocale();
   const { global_book } = userBook;
+  const [isAcquiring, setIsAcquiring] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleAcquire = async () => {
-    await userBooksApi.update(userBook.id, { status: "unread" });
-    onAcquired(userBook.id);
+    setIsAcquiring(true);
+    try {
+      await userBooksApi.update(userBook.id, { status: "unread" });
+      onAcquired(userBook.id);
+    } catch (e) {
+      console.error("Error acquiring book from wishlist:", e);
+    } finally {
+      setIsAcquiring(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`¿Eliminar "${global_book.title}" de tu lista de deseos?`)) return;
+    setIsDeleting(true);
+    try {
+      await userBooksApi.delete(userBook.id);
+      onDelete(userBook.id);
+    } catch (e) {
+      console.error("Error deleting book from wishlist:", e);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -68,16 +99,39 @@ function WishlistCard({ userBook, onAcquired }: { userBook: UserBook; onAcquired
         </div>
       </div>
 
-      {/* Acquire button */}
-      <div className="flex flex-col items-center justify-center flex-shrink-0">
+      {/* Action buttons: Acquire and Delete */}
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-2 flex-shrink-0 border-l border-gray-100 pl-3">
+        {/* Acquire button */}
         <button
+          type="button"
           onClick={handleAcquire}
-          title="Marcar como adquirido"
-          className="p-2.5 rounded-xl bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-colors group"
+          disabled={isAcquiring || isDeleting}
+          title="Marcar como adquirido (mover a biblioteca)"
+          className="p-2.5 rounded-xl bg-green-50 text-green-600 hover:bg-green-100 hover:text-green-700 transition-colors flex flex-col items-center group disabled:opacity-50"
         >
-          <ShoppingCart className="h-5 w-5 group-hover:scale-110 transition-transform" />
+          {isAcquiring ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <ShoppingCart className="h-5 w-5 group-hover:scale-110 transition-transform" />
+          )}
+          <span className="text-[10px] font-semibold text-green-700 mt-1">Adquirir</span>
         </button>
-        <span className="text-xs text-gray-400 mt-1">Adquirir</span>
+
+        {/* Delete button */}
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={isAcquiring || isDeleting}
+          title="Eliminar de la lista de deseos"
+          className="p-2.5 rounded-xl bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors flex flex-col items-center group disabled:opacity-50"
+        >
+          {isDeleting ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <Trash2 className="h-5 w-5 group-hover:scale-110 transition-transform" />
+          )}
+          <span className="text-[10px] font-semibold text-red-600 mt-1">Eliminar</span>
+        </button>
       </div>
     </div>
   );
@@ -97,6 +151,11 @@ export default function WishlistPage() {
   );
 
   const handleAcquired = (id: string) => {
+    // Optimistically remove from wishlist
+    mutate(swrKey, wishlistBooks?.filter((b) => b.id !== id), false);
+  };
+
+  const handleDeleted = (id: string) => {
     // Optimistically remove from wishlist
     mutate(swrKey, wishlistBooks?.filter((b) => b.id !== id), false);
   };
@@ -168,6 +227,7 @@ export default function WishlistPage() {
               key={userBook.id}
               userBook={userBook}
               onAcquired={handleAcquired}
+              onDelete={handleDeleted}
             />
           ))}
         </div>
