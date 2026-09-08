@@ -26,6 +26,7 @@ function WishlistCard({ userBook, onAcquired }: { userBook: UserBook; onAcquired
               src={global_book.cover_url}
               alt={global_book.title}
               fill
+              unoptimized={global_book.cover_url.startsWith("data:")}
               className="object-cover"
               sizes="64px"
             />

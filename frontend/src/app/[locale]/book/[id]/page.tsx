@@ -225,6 +225,7 @@ export default function BookPage({ params }: BookPageProps) {
               src={book.cover_url}
               alt={book.title}
               fill
+              unoptimized={book.cover_url.startsWith("data:")}
               className="object-cover"
               sizes="192px"
             />

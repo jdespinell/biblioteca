@@ -573,7 +573,14 @@ export default function AddBookPage() {
           <div className="flex gap-4">
             <div className="relative w-20 h-28 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
               {selectedBook.cover_url ? (
-                <Image src={selectedBook.cover_url} alt={selectedBook.title ?? ""} fill className="object-cover" sizes="80px" />
+                <Image
+                  src={selectedBook.cover_url}
+                  alt={selectedBook.title ?? ""}
+                  fill
+                  unoptimized={selectedBook.cover_url.startsWith("data:")}
+                  className="object-cover"
+                  sizes="80px"
+                />
               ) : (
                 <div className="absolute inset-0 bg-primary-50 flex items-center justify-center">
                   <BookOpen className="h-8 w-8 text-primary-400" />

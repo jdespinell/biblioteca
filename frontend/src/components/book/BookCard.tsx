@@ -74,6 +74,7 @@ export default function BookCard({ userBook, onDelete, onStatusChange }: BookCar
               src={global_book.cover_url}
               alt={global_book.title}
               fill
+              unoptimized={global_book.cover_url.startsWith("data:")}
               className="object-cover group-hover:scale-105 transition-transform duration-300"
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
             />

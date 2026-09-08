@@ -9,6 +9,59 @@ interface CoverCaptureProps {
   onClose: () => void;
 }
 
+/**
+ * Scale and compress camera photos into a standardized, lightweight book cover image
+ * Dimensions: max 600px width, max 900px height (2:3 aspect ratio).
+ * Output size: ~30KB - 60KB (super fast to upload, store and render).
+ */
+function compressAndFormatCoverImage(
+  file: File,
+  maxWidth = 600,
+  maxHeight = 900,
+  quality = 0.82
+): Promise<{ dataUrl: string; base64: string; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new window.Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        // Maintain aspect ratio within max bounds
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas context failed"));
+          return;
+        }
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const mimeType = "image/jpeg";
+        const dataUrl = canvas.toDataURL(mimeType, quality);
+        const base64 = dataUrl.split(",")[1];
+
+        resolve({ dataUrl, base64, mimeType });
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function CoverCapture({ onResult, onClose }: CoverCaptureProps) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -19,32 +72,24 @@ export default function CoverCapture({ onResult, onClose }: CoverCaptureProps) {
   const [error, setError] = useState<string | null>(null);
 
   const processFile = async (file: File) => {
-    // Show preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setPreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    setIsAnalyzing(true);
+    setError(null);
+    setResult(null);
 
-    // Convert to base64 and send to API
-    const base64Reader = new FileReader();
-    base64Reader.onloadend = async () => {
-      const base64 = (base64Reader.result as string).split(",")[1];
-      setIsAnalyzing(true);
-      setError(null);
-      setResult(null);
+    try {
+      // 1. Format and compress image to a lightweight book cover (~40KB)
+      const formatted = await compressAndFormatCoverImage(file);
+      setPreview(formatted.dataUrl);
 
-      try {
-        const recognition = await aiApi.recognizeCover(base64, file.type);
-        setResult(recognition);
-      } catch (err) {
-        console.error("Error recognizing cover:", err);
-        setError("Error al analizar la imagen con IA. Intenta con otra foto con mejor iluminación o ángulo.");
-      } finally {
-        setIsAnalyzing(false);
-      }
-    };
-    base64Reader.readAsDataURL(file);
+      // 2. Send formatted image to Gemini AI for identification
+      const recognition = await aiApi.recognizeCover(formatted.base64, formatted.mimeType);
+      setResult(recognition);
+    } catch (err) {
+      console.error("Error recognizing cover:", err);
+      setError("Error al procesar o analizar la imagen con IA. Intenta con otra foto con mejor iluminación.");
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -77,7 +122,7 @@ export default function CoverCapture({ onResult, onClose }: CoverCaptureProps) {
             </div>
             <div>
               <h3 className="font-bold text-gray-900 text-sm sm:text-base">Reconocer Portada con IA</h3>
-              <p className="text-[11px] text-gray-400">Toma una foto para identificar el libro automáticamente</p>
+              <p className="text-[11px] text-gray-400">Toma una foto para identificar y guardar la portada</p>
             </div>
           </div>
           <button
@@ -130,7 +175,7 @@ export default function CoverCapture({ onResult, onClose }: CoverCaptureProps) {
               </button>
 
               <p className="text-[11px] text-gray-400 text-center pt-2">
-                Apunta a la portada con buena luz para que Gemini pueda leer el título y autor.
+                La foto se optimizará automáticamente para convertirse en la portada oficial del libro.
               </p>
             </div>
           ) : (
@@ -202,7 +247,7 @@ export default function CoverCapture({ onResult, onClose }: CoverCaptureProps) {
                     onClick={handleUseResult}
                     className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition"
                   >
-                    ✓ Usar estos datos y añadir libro
+                    ✓ Usar estos datos y foto de portada
                   </button>
                 </div>
               )}

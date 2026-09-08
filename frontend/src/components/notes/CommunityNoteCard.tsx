@@ -81,6 +81,7 @@ export default function CommunityNoteCard({
                 src={note.book_cover_url}
                 alt={note.book_title ?? ""}
                 fill
+                unoptimized={note.book_cover_url.startsWith("data:")}
                 className="object-cover group-hover:scale-105 transition-transform duration-300"
                 sizes="64px"
               />
